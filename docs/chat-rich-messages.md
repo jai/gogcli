@@ -87,6 +87,13 @@ with threaded replies. The JSON receipt is
 `{ "deleted": "spaces/AAA/messages/BBB", "deleteReplies": false }` after success.
 No success receipt is emitted for provider failures.
 
+After deletion, Google can return HTTP 200 with `deleteTime` and deletion metadata
+when you get the message, rather than HTTP 404. That object is a deleted-message
+tombstone. Deleted replies can instead return an ambiguous HTTP 403; the smoke
+test requires a successful scoped thread listing with the target absent before
+accepting that response as deletion evidence. Markdown formatting can wrap hyperlink labels
+across lines; the smoke test normalizes whitespace when comparing the label.
+
 Existing Chat authorization includes `chat.messages`; no new scope is requested.
 Google still enforces message ownership, authorization type, and Workspace
 permissions. App-authenticated updates/deletions are restricted to messages

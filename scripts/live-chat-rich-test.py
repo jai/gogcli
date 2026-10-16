@@ -8,6 +8,8 @@ Example (writes synthetic messages, then removes them):
 The caller must verify the sole member is the supplied account before running.
 The script additionally requires a space named exactly 'Gog CLI fork validation'
 with one HUMAN membership. It never creates spaces or reads unrelated messages.
+Deletion is verified by a matching deleteTime tombstone, an API 404, or (after
+an API 403) absence from a complete, successful listing of the run-owned thread.
 CardsV2 need an app-created fixture and are covered by offline command tests.
 """
 
@@ -28,11 +30,16 @@ class SmokeFailure(Exception):
     """A diagnostic safe to include in the summary."""
 
 
+class SmokeNotDeleted(SmokeFailure):
+    """The run-owned message is still visible and can be cleaned up."""
+
+
 class Smoke:
     def __init__(self, args):
         self.args = args
         self.checks = []
         self.created = []
+        self.created_threads = {}
         self.cleanup_errors = 0
         self.marker = "gog-rich-smoke-" + uuid.uuid4().hex
 
@@ -125,6 +132,10 @@ class Smoke:
             "send_response_missing_resource; inspect validation space for an uncertain send",
         )
         self.created.append(name)
+        thread = message.get("thread", {}).get("name", "")
+        self.require(re.fullmatch(re.escape(self.args.space) + r"/threads/[^/]+", thread),
+                     "send_response_missing_thread")
+        self.created_threads[name] = thread
         return message
 
     def get(self, name, *extra):
@@ -149,15 +160,47 @@ class Smoke:
                            *local_flags)
 
     @staticmethod
-    def is_missing(result):
+    def is_api_error(result, code):
         return result.returncode != 0 and bool(re.search(
-            r"\b404\b|\bnotFound\b|\bnot_found\b|\bnot found\b",
+            rf"Google API error \({code}(?:\s|\))|googleapi:\s*Error\s+{code}\b",
             result.stderr, re.IGNORECASE,
         ))
 
-    def require_missing(self, name):
-        self.require(self.is_missing(self.invoke("chat", "messages", "get", name)),
-                     "deleted_message_did_not_return_404")
+    @staticmethod
+    def is_missing(result):
+        return Smoke.is_api_error(result, 404)
+
+    def require_deleted(self, name):
+        """Verify deletion without treating Google's ambiguous 403 as proof."""
+        self.owned(name)
+        result = self.invoke("chat", "messages", "get", name)
+        if self.is_missing(result):
+            return
+        if self.is_api_error(result, 403):
+            thread = self.created_threads.get(name)
+            self.require(bool(thread), "deleted_message_missing_run_owned_thread")
+            listed = self.call("chat", "messages", "list", self.args.space,
+                               "--full", "--thread", thread, "--max", "100")
+            messages = listed.get("messages")
+            self.require(isinstance(messages, list) and all(
+                isinstance(item, dict) and isinstance(item.get("name"), str)
+                for item in messages
+            ), "deleted_message_invalid_thread_listing")
+            self.require(not listed.get("nextPageToken"),
+                         "deleted_message_incomplete_thread_listing")
+            if any(item["name"] == name for item in messages):
+                raise SmokeNotDeleted("deleted_message_still_visible_in_thread")
+            return
+        message = self.decode(result).get("message")
+        self.require(isinstance(message, dict) and message.get("name") == name,
+                     "deleted_message_readback_name_mismatch")
+        if not message.get("deleteTime"):
+            raise SmokeNotDeleted("deleted_message_still_visible")
+        self.require(
+            isinstance(message.get("deleteTime"), str)
+            and bool(message["deleteTime"].strip()),
+            "deleted_message_invalid_tombstone",
+        )
 
     def exercise(self):
         text = self.marker + ": <https://example.com|validation link>"
@@ -165,7 +208,8 @@ class Smoke:
         name = message["name"]
         fetched = self.get(name)
         formatted = fetched.get("formattedText", "")
-        self.require("https://example.com" in formatted and "validation link" in formatted,
+        normalized = " ".join(formatted.split())
+        self.require("https://example.com" in normalized and "validation link" in normalized,
                      "get_dropped_named_hyperlink")
         self.passed("native_get_named_hyperlink")
 
@@ -180,7 +224,8 @@ class Smoke:
                      "full_list_dropped_named_hyperlink")
         self.passed("native_list_full_named_hyperlink")
         markdown = self.get(name, "--markup", "markdown").get("formattedText", "")
-        self.require("https://example.com" in markdown and "validation link" in markdown,
+        normalized = " ".join(markdown.split())
+        self.require("https://example.com" in normalized and "validation link" in normalized,
                      "markdown_get_dropped_hyperlink")
         self.passed("native_get_markdown")
 
@@ -213,8 +258,8 @@ class Smoke:
                      "update_readback_mismatch")
         self.passed("native_update_exact_readback")
         self.decode(self.delete(name))
-        self.require_missing(name)
-        self.passed("native_delete_and_404")
+        self.require_deleted(name)
+        self.passed("native_delete_verified")
 
         with tempfile.TemporaryDirectory(prefix="gog-rich-smoke-") as directory:
             image = Path(directory) / "validation.png"
@@ -230,7 +275,7 @@ class Smoke:
         ), "native_get_missing_image_metadata")
         self.passed("native_image_attachment_metadata")
         self.decode(self.delete(image_name))
-        self.require_missing(image_name)
+        self.require_deleted(image_name)
 
         root = self.send(self.marker + " synthetic root")
         root_name = root["name"]
@@ -246,23 +291,33 @@ class Smoke:
             r"thread|repl|FAILED_PRECONDITION|\b400\b|\b409\b",
             refused.stderr, re.IGNORECASE,
         )), "root_delete_without_delete_replies_not_refused")
-        self.get(root_name)
-        self.get(reply_name)
+        preserved_root = self.get(root_name)
+        preserved_reply = self.get(reply_name)
+        self.require(
+            not preserved_root.get("deleteTime") and not preserved_reply.get("deleteTime")
+            and preserved_root.get("text") == self.marker + " synthetic root"
+            and preserved_reply.get("text") == self.marker + " synthetic reply",
+            "root_delete_without_delete_replies_did_not_preserve_messages",
+        )
         self.passed("global_force_preserves_thread_replies")
         self.decode(self.delete(root_name, "--delete-replies"))
-        self.require_missing(root_name)
-        self.require_missing(reply_name)
+        self.require_deleted(root_name)
+        self.require_deleted(reply_name)
         self.passed("explicit_delete_replies_removes_run_owned_thread")
 
     def cleanup(self):
         for name in reversed(self.created):
             try:
+                try:
+                    self.require_deleted(name)
+                    continue
+                except SmokeNotDeleted:
+                    pass
                 # Delete replies first; do not cascade during recovery cleanup.
                 result = self.delete(name)
-                if self.is_missing(result):
-                    continue
-                self.decode(result)
-                self.require_missing(name)
+                if not self.is_missing(result):
+                    self.decode(result)
+                self.require_deleted(name)
             except SmokeFailure:
                 self.cleanup_errors += 1
         self.checks.append({"name": "cleanup", "status":
