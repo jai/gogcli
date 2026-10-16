@@ -103,7 +103,6 @@ ${service === "chat" ? `## Rich messages
 - \`messages update\` (alias \`edit\`) requires \`--text\` and patches only text. Explicit empty text is sent; provider validation still applies.
 - \`messages delete\` requires confirmation; root \`--force\` bypasses only the CLI prompt. \`--delete-replies\` separately enables Google's threaded-reply deletion.
 - Preview mutations with \`--dry-run\`. Readonly blocks mutations. Google ownership/permissions still apply; these commands cannot edit app cards.
-- This feature is maintained in the personal fork; upstream acceptance and live mutation permissions are not implied.
 
 ` : ""}## Commands
 

@@ -1,7 +1,6 @@
-# Chat rich messages (personal fork)
+# Chat rich messages
 
-This feature belongs to the `jai/gogcli` fork. It is not a statement that upstream
-has accepted the design. Chat requires a Google Workspace account.
+Chat requires a Google Workspace account.
 
 ## Read full messages
 
@@ -9,7 +8,7 @@ has accepted the design. Chat requires a Google Workspace account.
 gog --account you@example.com chat messages list spaces/AAA --json --full
 gog --account you@example.com chat messages search 'release' --json --full --view full --markup markdown
 gog --account you@example.com chat messages get spaces/AAA/messages/BBB --json
-gog --account you@example.com chat messages get BBB --space AAA --markup chat --plain
+gog --account you@example.com chat messages get BBB --space AAA --plain
 ```
 
 List and search keep their compact JSON and TSV defaults. `--full` is an output
@@ -18,7 +17,8 @@ lookup. `--view full` is a separate **search provider option** for read/mute
 metadata, subject to Google's available permissions. `--full` does not enable
 that provider view automatically. `--markup chat|markdown` selects the provider's
 formatted-text syntax on list, search, and get; omitting it leaves Google's
-default unchanged.
+default unchanged. The syntax changes `formattedText`, which list/get expose
+in full JSON; it does not change their plain-text summaries.
 
 Full list returns `{ "messages": [...], "nextPageToken": "..." }`, using Google's
 `name` field instead of the compact `resource` alias. Full search keeps its
@@ -53,9 +53,11 @@ gog --readonly --account you@example.com chat messages get spaces/AAA/messages/B
 
 `--wrap-untrusted` treats rich message strings conservatively, including card
 text, titles/subtitles, labels, alt text, filenames, and button/action content.
-Validated resource names, opaque identifiers, and HTTP(S) URL fields remain
-usable. A usable URL is data, not a recommendation to fetch it or trust its
-contents. Malformed metadata strings are wrapped too. Classification is scoped
+Validated server-assigned resource names, opaque identifiers, and HTTP(S) URL
+fields remain usable. Sender-defined card IDs, thread keys, client message IDs
+and resource names containing client message IDs stay wrapped. A usable URL is
+data, not a recommendation to fetch it or trust its contents. Malformed metadata
+strings are wrapped too. Classification is scoped
 to full Chat output and survives `--results-only` and dotted `--select` paths;
 compact output keeps its existing mention/reaction filtering. Without wrapping,
 SDK-known strings are emitted unchanged.

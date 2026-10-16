@@ -19,14 +19,15 @@ import (
 const richChatFixture = `{
  "name":"spaces/AAA/messages/m1", "text":"hostile text", "formattedText":"**hostile text**",
  "sender":{"name":"users/123","displayName":"hostile sender"},
- "thread":{"name":"spaces/AAA/threads/t1"}, "space":{"name":"spaces/AAA"},
+ "thread":{"name":"spaces/AAA/threads/t1","threadKey":"hostile-thread-1"}, "clientAssignedMessageId":"client-hostile", "space":{"name":"spaces/AAA"},
  "annotations":[{"type":"RICH_LINK","richLinkMetadata":{"uri":"https://example.com/doc","driveLinkData":{"driveDataRef":{"driveFileId":"file-123"}}}}],
  "attachment":[{"name":"spaces/AAA/messages/m1/attachments/a1","contentName":"hostile.png","downloadUri":"https://example.com/file","thumbnailUri":"https://example.com/thumb","attachmentDataRef":{"resourceName":"spaces/AAA/messages/m1/attachments/a1","attachmentUploadToken":"upload-token"}}],
  "cards":[{"header":{"title":"hostile v1","subtitle":"hostile subtitle","imageUrl":"https://example.com/v1.png"},"sections":[{"widgets":[{"textParagraph":{"text":"hostile paragraph"}}]}]}],
- "cardsV2":[{"cardId":"card-1","card":{"header":{"title":"hostile v2","subtitle":"hostile subtitle","imageUrl":"https://example.com/v2.png","imageAltText":"hostile alt"},"sections":[{"widgets":[{"decoratedText":{"topLabel":"hostile top","text":"hostile decorated","bottomLabel":"hostile bottom"}},{"buttonList":{"buttons":[{"text":"hostile button","altText":"hostile button alt","onClick":{"openLink":{"url":"https://example.com/button"}}}]}},{"image":{"imageUrl":"https://example.com/image.png","altText":"hostile image"}}]}]}}],
+ "cardsV2":[{"cardId":"hostile-card-1","card":{"header":{"title":"hostile v2","subtitle":"hostile subtitle","imageUrl":"https://example.com/v2.png","imageAltText":"hostile alt"},"sections":[{"widgets":[{"decoratedText":{"topLabel":"hostile top","text":"hostile decorated","bottomLabel":"hostile bottom"}},{"buttonList":{"buttons":[{"text":"hostile button","altText":"hostile button alt","onClick":{"openLink":{"url":"https://example.com/button"}}}]}},{"image":{"imageUrl":"https://example.com/image.png","altText":"hostile image"}}]}]}}],
  "attachedGifs":[{"uri":"https://example.com/animated.gif"}],
  "accessoryWidgets":[{"buttonList":{"buttons":[{"text":"hostile accessory"}]}}],
  "emojiReactionSummaries":[{"emoji":{"customEmoji":{"name":"customEmojis/abc","emojiName":":hostile:","uid":"abc","temporaryImageUri":"https://example.com/emoji.png"}},"reactionCount":1}],
+ "quotedMessageMetadata":{"name":"spaces/AAA/messages/quoted","forwardedMetadata":{"space":"spaces/FORWARDED"},"quotedMessageSnapshot":{"attachments":[{"name":"spaces/AAA/messages/quoted/attachments/qa1"}]}},
  "unknownFutureField":"not preserved by SDK"
 }`
 
@@ -353,7 +354,7 @@ func TestChatFullWrappingAndProjection(t *testing.T) {
 						if command == "search" {
 							prefix = "message."
 						}
-						fields := []string{"name", "sender.name", "sender.displayName", "attachment.0.contentName", "cardsV2.0.card.header.title", "cardsV2.0.card.header.subtitle", "cardsV2.0.card.header.imageAltText", "cardsV2.0.card.header.imageUrl", "cardsV2.0.card.sections.0.widgets.0.decoratedText.topLabel", "cardsV2.0.card.sections.0.widgets.1.buttonList.buttons.0.altText", "cardsV2.0.card.sections.0.widgets.1.buttonList.buttons.0.onClick.openLink.url"}
+						fields := []string{"name", "thread.threadKey", "clientAssignedMessageId", "cardsV2.0.cardId", "quotedMessageMetadata.forwardedMetadata.space", "quotedMessageMetadata.quotedMessageSnapshot.attachments.0.name", "sender.name", "sender.displayName", "attachment.0.contentName", "cardsV2.0.card.header.title", "cardsV2.0.card.header.subtitle", "cardsV2.0.card.header.imageAltText", "cardsV2.0.card.header.imageUrl", "cardsV2.0.card.sections.0.widgets.0.decoratedText.topLabel", "cardsV2.0.card.sections.0.widgets.1.buttonList.buttons.0.altText", "cardsV2.0.card.sections.0.widgets.1.buttonList.buttons.0.onClick.openLink.url"}
 						for i := range fields {
 							fields[i] = prefix + fields[i]
 						}
@@ -383,6 +384,11 @@ func TestChatFullWrappingAndProjection(t *testing.T) {
 					if err := json.Unmarshal([]byte(result.stdout), &decoded); err != nil {
 						t.Fatal(err)
 					}
+					for _, want := range []string{"hostile-card-1", "hostile-thread-1", "client-hostile", "spaces/FORWARDED", "/attachments/qa1"} {
+						if !strings.Contains(result.stdout, want) {
+							t.Errorf("missing SDK field %q", want)
+						}
+					}
 					assertChatStringsWrapped(t, decoded, wrap)
 				})
 			}
@@ -406,7 +412,7 @@ func assertChatStringsWrapped(t *testing.T, value any, wrap bool) {
 		if strings.Contains(v, "hostile") && marker != wrap {
 			t.Errorf("wrapped=%v want=%v: %s", marker, wrap, v)
 		}
-		if (strings.Contains(v, "https://example.com/") || strings.Contains(v, "spaces/AAA/") || strings.Contains(v, "users/123")) && marker {
+		if (strings.Contains(v, "https://example.com/") || strings.Contains(v, "spaces/AAA") || strings.Contains(v, "spaces/FORWARDED") || strings.Contains(v, "users/123")) && marker {
 			t.Errorf("usable metadata wrapped: %s", v)
 		}
 	}

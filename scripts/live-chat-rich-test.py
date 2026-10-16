@@ -161,10 +161,20 @@ class Smoke:
 
     @staticmethod
     def is_api_error(result, code):
-        return result.returncode != 0 and bool(re.search(
-            rf"Google API error \({code}(?:\s|\))|googleapi:\s*Error\s+{code}\b",
-            result.stderr, re.IGNORECASE,
-        ))
+        return result.returncode == {403: 6, 404: 5}.get(code, -1)
+
+    @staticmethod
+    def is_reply_delete_refusal(result):
+        if result.returncode != 1:
+            return False
+        try:
+            error = json.loads(result.stdout).get("error", {})
+        except (ValueError, TypeError, AttributeError):
+            return False
+        return error.get("code") == 1 and error.get("message") == (
+            "Google API error (400 failedPrecondition): To delete a message with "
+            "threaded replies, set force to true, which will also delete the threaded replies."
+        )
 
     @staticmethod
     def is_missing(result):
@@ -287,10 +297,8 @@ class Smoke:
         self.require(reply.get("thread", {}).get("name") == thread,
                      "reply_created_in_different_thread")
         refused = self.delete(root_name)
-        self.require(refused.returncode != 0 and bool(re.search(
-            r"thread|repl|FAILED_PRECONDITION|\b400\b|\b409\b",
-            refused.stderr, re.IGNORECASE,
-        )), "root_delete_without_delete_replies_not_refused")
+        self.require(self.is_reply_delete_refusal(refused),
+                     "root_delete_without_delete_replies_not_refused")
         preserved_root = self.get(root_name)
         preserved_reply = self.get(reply_name)
         self.require(

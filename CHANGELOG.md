@@ -2,7 +2,7 @@
 
 ## 0.44.1 - Unreleased
 
-- Chat (personal fork): add full SDK message output for list/search, get with markup selection, text-only update/edit, and confirmed delete with explicit reply deletion; preserve compact defaults and wrap nested rich content for agents. (openclaw/gogcli#1000) — thanks @jai.
+- Chat: add full SDK message output for list/search, get with markup selection, text-only update/edit, and confirmed delete with explicit reply deletion; preserve compact defaults and wrap nested rich content for agents. (jai/gogcli#1) — thanks @jai.
 
 - Output: warn on stderr when a `--select` path matches no objects in a nonempty result, preserving JSON output and exit status. (#1210) — thanks @postoso.
 - Auth: clarify that `auth login` opens the browser account manager, and document manual authorization and unattended health checks. (#1214) — thanks @jingtying.

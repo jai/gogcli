@@ -90,7 +90,7 @@ Identity Groups, Chat, Keep, and domain-wide delegation require a managed
 Google Workspace domain. The [Workspace Admin guide](docs/workspace-admin.md)
 explains that setup.
 
-## Chat messages in this fork
+## Chat messages
 
 ```bash
 gog --account you@example.com chat messages list spaces/AAA --full --json --wrap-untrusted
@@ -104,7 +104,7 @@ Compact list/search defaults are preserved. Full output is SDK-typed JSON,
 including rich content and image URLs; it does not download image bytes.
 See [Chat rich messages](docs/chat-rich-messages.md) for output contracts,
 permissions, safe text edits, and the distinction between CLI `--force` and
-API reply deletion. This is a personal-fork feature.
+API reply deletion.
 
 ## Automate safely
 

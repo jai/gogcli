@@ -53,7 +53,7 @@ func trustedChatString(path []string, value string) bool {
 	case "name":
 		switch parent {
 		case "", "message", "messages", "quotedMessageMetadata":
-			return chatMessageResource.MatchString(value)
+			return validChatMessageResource(value)
 		case "space":
 			return chatSpaceResource.MatchString(value)
 		case "thread":
@@ -62,29 +62,27 @@ func trustedChatString(path []string, value string) bool {
 			return trustedChatUserResourcePattern.MatchString(value)
 		case "customEmoji":
 			return trustedChatCustomEmojiResourcePattern.MatchString(value)
-		case "attachment":
-			return chatAttachmentResource.MatchString(value)
+		case "attachment", "attachments":
+			return validChatAttachmentResource(value)
 		}
 	case "url", "uri", "imageUrl", "iconUrl", "imageUri", "downloadUri", "thumbnailUri", "contentUrl", "originalUri", "redirectUri", "messageUrl", "temporaryImageUri", "avatarUrl", "startIconUri":
 		return validChatURL(value)
 	case "message":
-		return parent == "chatSpaceLinkData" && chatMessageResource.MatchString(value)
+		return parent == "chatSpaceLinkData" && validChatMessageResource(value)
 	case "space":
-		return parent == "chatSpaceLinkData" && chatSpaceResource.MatchString(value)
+		return (parent == "chatSpaceLinkData" || parent == "forwardedMetadata") && chatSpaceResource.MatchString(value)
 	case "thread":
 		return parent == "chatSpaceLinkData" && chatThreadResource.MatchString(value)
 	case "meetingCode":
 		return parent == "meetSpaceLinkData" && chatOpaqueID.MatchString(value)
 	case "eventId":
 		return parent == "calendarEventLinkData" && chatOpaqueID.MatchString(value)
-	case "threadKey":
-		return parent == "thread" && chatOpaqueID.MatchString(value)
-	case "nextPageToken", "clientAssignedMessageId":
+	case "nextPageToken":
 		return chatOpaqueID.MatchString(value)
 	case "attachmentUploadToken":
 		return parent == "attachmentDataRef" && chatOpaqueID.MatchString(value)
 	case "resourceName":
-		return parent == "attachmentDataRef" && chatAttachmentResource.MatchString(value)
+		return parent == "attachmentDataRef" && validChatAttachmentResource(value)
 	case "driveFileId":
 		return parent == "driveDataRef" && chatOpaqueID.MatchString(value)
 	case "uid":
@@ -94,12 +92,19 @@ func trustedChatString(path []string, value string) bool {
 		return err == nil
 	case "spaceMuteSetting":
 		return value == "MUTED" || value == "UNMUTED" || value == "MUTE_SETTING_UNSPECIFIED"
-	case "cardId":
-		return parent == "cardsV2" && chatOpaqueID.MatchString(value)
 	}
 	// Card names, labels, titles, filenames, parameters and all other strings are
 	// content, even when their key resembles generic output metadata (e.g. id).
 	return false
+}
+
+// A valid resource can still embed sender-controlled text in a client- ID.
+func validChatMessageResource(value string) bool {
+	return chatMessageResource.MatchString(value) && !strings.Contains(value, "/messages/client-")
+}
+
+func validChatAttachmentResource(value string) bool {
+	return chatAttachmentResource.MatchString(value) && !strings.Contains(value, "/messages/client-")
 }
 
 func validChatURL(value string) bool {
