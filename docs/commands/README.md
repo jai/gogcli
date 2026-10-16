@@ -2,7 +2,7 @@
 
 Every `gog` command has a generated docs page. The source of truth is the live CLI schema; run `make docs-commands` after changing command names, flags, help text, aliases, or arguments.
 
-Generated pages: 779.
+Generated pages: 782.
 
 ## Top-level Commands
 
@@ -209,6 +209,8 @@ Generated pages: 779.
       - [gog chat dm send](gog-chat-dm-send.md) - Send a direct message
       - [gog chat dm space](gog-chat-dm-space.md) - Find or create a DM space
     - [gog chat messages](gog-chat-messages.md) - Chat messages
+      - [gog chat messages delete](gog-chat-messages-delete.md) - Delete a message
+      - [gog chat messages get](gog-chat-messages-get.md) - Get a full message
       - [gog chat messages list](gog-chat-messages-list.md) - List messages
       - [gog chat messages react](gog-chat-messages-react.md) - Add an emoji reaction to a message
       - [gog chat messages reactions](gog-chat-messages-reactions.md) - Manage emoji reactions on a message
@@ -217,6 +219,7 @@ Generated pages: 779.
         - [gog chat messages reactions list](gog-chat-messages-reactions-list.md) - List reactions on a message
       - [gog chat messages search](gog-chat-messages-search.md) - Search messages across Chat
       - [gog chat messages send](gog-chat-messages-send.md) - Send a message
+      - [gog chat messages update](gog-chat-messages-update.md) - Replace message text
     - [gog chat spaces](gog-chat-spaces.md) - Chat spaces
       - [gog chat spaces create](gog-chat-spaces-create.md) - Create a space
       - [gog chat spaces find](gog-chat-spaces-find.md) - Find spaces by display name

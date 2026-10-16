@@ -29,6 +29,7 @@ const titles = {
 
 const examples = {
   calendar: "gog --readonly --account user@example.com calendar events --today --json --wrap-untrusted",
+  chat: "gog --readonly --account user@example.com chat messages list spaces/SPACE_ID --full --json --wrap-untrusted",
   contacts: "gog --readonly --account user@example.com contacts search alice --json --wrap-untrusted",
   docs: "gog --readonly --account user@example.com docs cat DOCUMENT_ID --json --wrap-untrusted",
   drive: "gog --readonly --account user@example.com drive ls --max 20 --json --wrap-untrusted",
@@ -92,7 +93,19 @@ ${example}
 - Use \`--no-input\` in automation and \`--dry-run\` before supported writes.
 - Confirm the exact account, object, and mutation before any write or delete.
 
-## Commands
+${service === "chat" ? `## Rich messages
+
+- List/search default to compact output; add \`--full --json\` for full SDK-known message content. This is typed JSON, not raw/lossless output.
+- \`messages get spaces/SPACE/messages/MESSAGE --json\` returns a full message; bare IDs require \`--space\`.
+- \`--view full\` is a search provider option for read/mute metadata, independent of \`--full\`. List/search/get accept \`--markup chat|markdown\`.
+- Full output includes card, image, GIF, and attachment metadata/URLs; it never fetches image or attachment bytes.
+- Use \`--wrap-untrusted\` for nested card text, labels, filenames and alt text, including with \`--results-only --select\`.
+- \`messages update\` (alias \`edit\`) requires \`--text\` and patches only text. Explicit empty text is sent; provider validation still applies.
+- \`messages delete\` requires confirmation; root \`--force\` bypasses only the CLI prompt. \`--delete-replies\` separately enables Google's threaded-reply deletion.
+- Preview mutations with \`--dry-run\`. Readonly blocks mutations. Google ownership/permissions still apply; these commands cannot edit app cards.
+- This feature is maintained in the personal fork; upstream acceptance and live mutation permissions are not implied.
+
+` : ""}## Commands
 
 | Command | Purpose |
 | --- | --- |

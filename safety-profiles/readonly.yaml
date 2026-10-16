@@ -252,6 +252,9 @@ chat:
     create: false
   messages:
     list: true
+    get: true
+    update: false
+    delete: false
     send: false
     react: false
     reactions: false

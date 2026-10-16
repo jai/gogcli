@@ -10,7 +10,9 @@ import (
 	"testing"
 
 	"golang.org/x/oauth2"
+	"google.golang.org/api/chat/v1"
 	"google.golang.org/api/keep/v1"
+	"google.golang.org/api/option"
 )
 
 type readOnlyTestTransport struct {
@@ -174,4 +176,28 @@ func readOnlyTestRoundTrip(transport http.RoundTripper, request *http.Request) e
 	}
 
 	return nil
+}
+
+func TestReadOnlyChatMessageMutations(t *testing.T) {
+	base := &readOnlyTestTransport{}
+	client := &http.Client{Transport: readOnlyTransportFromContext(WithReadOnly(context.Background(), true), base)}
+
+	svc, err := chat.NewService(context.Background(), option.WithHTTPClient(client), option.WithoutAuthentication())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = svc.Spaces.Messages.Patch("spaces/AAA/messages/m1", &chat.Message{Text: "replacement"}).UpdateMask("text").Context(context.Background()).Do()
+	if !errors.Is(err, ErrReadOnly) {
+		t.Fatalf("PATCH: %v", err)
+	}
+
+	_, err = svc.Spaces.Messages.Delete("spaces/AAA/messages/m1").Force(true).Context(context.Background()).Do()
+	if !errors.Is(err, ErrReadOnly) {
+		t.Fatalf("DELETE: %v", err)
+	}
+
+	if base.calls != 0 {
+		t.Fatalf("mutations reached network: %d", base.calls)
+	}
 }

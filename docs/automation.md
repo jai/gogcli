@@ -63,6 +63,13 @@ system. Chat message and thread listings also wrap flattened sender display
 names. Raw Chat JSON responses, including those from `gog api call`, wrap
 `formattedText` too. Without the flag, ordinary JSON strings remain unchanged.
 
+Full Chat list/search output (`--full --json`) and message get/update output
+wrap nested rich content, including card subtitles, labels, alt text, filenames,
+and button text. Structurally validated resource names and HTTP(S) URLs remain
+usable; dotted selections retain these rules. Compact defaults are unchanged.
+Full Chat JSON is SDK-typed rather than raw/lossless, and image/attachment bytes
+are never fetched. See [Chat rich messages](chat-rich-messages.md).
+
 Use `--readonly` (or `GOG_READONLY=1`) as a runtime backstop. It permits GET,
 HEAD, OPTIONS, and the small allowlist of Google APIs whose query operations use
 POST, while rejecting mutating API requests before network dispatch. This guard

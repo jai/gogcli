@@ -4,6 +4,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -338,5 +339,35 @@ func TestSafetyProfileFiltersSchema(t *testing.T) {
 	}
 	if strings.Contains(out, `"name": "send"`) {
 		t.Fatalf("expected send to be hidden from filtered schema, got: %q", out)
+	}
+}
+
+func TestChatMessageSafetyProfiles(t *testing.T) {
+	for _, name := range []string{"agent-safe", "readonly"} {
+		t.Run(name, func(t *testing.T) {
+			raw, err := os.ReadFile(filepath.Join("..", "..", "safety-profiles", name+".yaml"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			withBakedSafetyProfile(t, string(raw))
+			svc := useFakeChatService(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"name":"spaces/AAA/messages/m1"}`))
+			})
+			result := executeWithChatTestService(t, []string{"--account", "a@example.com", "--json", "chat", "messages", "get", "spaces/AAA/messages/m1"}, svc)
+			if result.err != nil {
+				t.Fatal(result.err)
+			}
+			for _, command := range []string{"update", "edit", "delete", "rm", "remove", "del"} {
+				args := []string{"--account", "a@example.com", "--force", "chat", "messages", command, "spaces/AAA/messages/m1"}
+				if command == "update" || command == "edit" {
+					args = append(args, "--text=x")
+				}
+				result := executeWithChatTestServiceFactory(t, args, unexpectedChatTestService(t, "blocked command reached service"))
+				if result.err == nil || !strings.Contains(result.err.Error(), "baked safety profile") {
+					t.Fatalf("%s: %v", command, result.err)
+				}
+			}
+		})
 	}
 }

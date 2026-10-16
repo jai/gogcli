@@ -155,6 +155,8 @@ Generated from `gog schema --json`.
       - [`gog chat dm send (create,post) <email> [flags]`](commands/gog-chat-dm-send.md) - Send a direct message
       - [`gog chat dm space (find,setup) <email>`](commands/gog-chat-dm-space.md) - Find or create a DM space
     - [`gog chat messages <command>`](commands/gog-chat-messages.md) - Chat messages
+      - [`gog chat messages delete (rm,remove,del) <message> [flags]`](commands/gog-chat-messages-delete.md) - Delete a message
+      - [`gog chat messages get <message> [flags]`](commands/gog-chat-messages-get.md) - Get a full message
       - [`gog chat messages list (ls) <space> [flags]`](commands/gog-chat-messages-list.md) - List messages
       - [`gog chat messages react <message> <emoji> [flags]`](commands/gog-chat-messages-react.md) - Add an emoji reaction to a message
       - [`gog chat messages reactions (reaction) <command>`](commands/gog-chat-messages-reactions.md) - Manage emoji reactions on a message
@@ -163,6 +165,7 @@ Generated from `gog schema --json`.
         - [`gog chat messages reactions (reaction) list (ls) <message> [flags]`](commands/gog-chat-messages-reactions-list.md) - List reactions on a message
       - [`gog chat messages search (find,query) <query> ... [flags]`](commands/gog-chat-messages-search.md) - Search messages across Chat
       - [`gog chat messages send (create,post) <space> [flags]`](commands/gog-chat-messages-send.md) - Send a message
+      - [`gog chat messages update (edit) <message> [flags]`](commands/gog-chat-messages-update.md) - Replace message text
     - [`gog chat spaces <command>`](commands/gog-chat-spaces.md) - Chat spaces
       - [`gog chat spaces create (add,new) <displayName> [flags]`](commands/gog-chat-spaces-create.md) - Create a space
       - [`gog chat spaces find (search,query) <displayName> [flags]`](commands/gog-chat-spaces-find.md) - Find spaces by display name
