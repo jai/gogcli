@@ -25,6 +25,8 @@ type GmailForwardOptions struct {
 	Bcc                     string `name:"bcc" help:"BCC recipients (comma-separated)"`
 	Note                    string `name:"note" aliases:"intro" help:"Introductory text above the forwarded message"`
 	NoteFile                string `name:"note-file" help:"Note file path (plain text; '-' for stdin)"`
+	NoteHTML                string `name:"note-html" help:"Introductory HTML above the forwarded message"`
+	NoteHTMLFile            string `name:"note-html-file" help:"HTML note file path ('-' for stdin)"`
 	From                    string `name:"from" help:"Send from this email address (must be a verified send-as alias)"`
 	SkipAttachments         bool   `name:"skip-attachments" help:"Do not include original attachments"`
 	composeSignatureOptions `embed:""`
@@ -45,6 +47,7 @@ const (
 type forwardComposeInputs struct {
 	messageID     string
 	note          string
+	noteHTML      string
 	toRecipients  []string
 	ccRecipients  []string
 	bccRecipients []string
@@ -106,6 +109,7 @@ func (c *GmailForwardOptions) dryRunFields(inputs forwardComposeInputs) map[stri
 		"bcc":              inputs.bccRecipients,
 		"from":             strings.TrimSpace(c.From),
 		"note_len":         len(inputs.note),
+		"note_html_len":    len(inputs.noteHTML),
 		"skip_attachments": c.SkipAttachments,
 		"signature":        c.Signature,
 		"signature_from":   strings.TrimSpace(c.SignatureFrom),
@@ -138,8 +142,9 @@ func (c *GmailForwardOptions) resolveForwardInputs(ctx context.Context, messageI
 	}
 
 	// Resolve the note after the required-recipient check so a missing --to on
-	// the send path fails fast without consuming stdin (--note-file -).
-	note, err := resolveBodyInput(ctx, c.Note, c.NoteFile)
+	// the send path fails fast without consuming stdin (--note-file - or
+	// --note-html-file -).
+	note, noteHTML, err := resolveTextAndHTMLInputs(ctx, "--note", c.Note, c.NoteFile, c.NoteHTML, c.NoteHTMLFile)
 	if err != nil {
 		return forwardComposeInputs{}, err
 	}
@@ -147,6 +152,7 @@ func (c *GmailForwardOptions) resolveForwardInputs(ctx context.Context, messageI
 	return forwardComposeInputs{
 		messageID:      messageID,
 		note:           note,
+		noteHTML:       noteHTML,
 		toRecipients:   toRecipients,
 		ccRecipients:   ccRecipients,
 		bccRecipients:  bccRecipients,
@@ -196,19 +202,29 @@ func (c *GmailForwardOptions) buildForwardComposeMessage(ctx context.Context, sv
 		return forwardComposeMessage{}, err
 	}
 
-	// Build forwarded body (plain text).
-	fwdPlain := formatForwardedMessage(inputs.note, signature, origFrom, origDate, origSubject, origTo, origCc, origPlain, loc)
+	// The note fills in its missing form the way a reply body does.
+	note := composeText{plain: inputs.note, html: inputs.noteHTML}
+
+	// Build forwarded body (plain text). A note with no plain rendering (an
+	// image, say) leaves the plain part out rather than send one without the
+	// note, as an image-only reply does. A reply's body already includes its
+	// signature when it makes that check; the note doesn't, so a signature with
+	// text keeps the plain part here.
+	var fwdPlain string
+	if !note.htmlOnlyWithoutText() || signature.plainBlock() != "" {
+		fwdPlain = formatForwardedMessage(note.plainVersion(), signature, origFrom, origDate, origSubject, origTo, origCc, origPlain, loc)
+	}
 
 	// Build forwarded body (HTML) if the original had HTML. An original with
 	// only plain text, or no body text at all, still gets one when the
-	// signature has HTML, so the signature is not lost.
+	// signature or the note has HTML, so neither is lost.
 	var fwdHTML string
-	if origHTML != "" || signature.htmlBlock() != "" {
+	if origHTML != "" || signature.htmlBlock() != "" || note.hasHTML() {
 		htmlContent := origHTML
 		if htmlContent == "" {
 			htmlContent = escapeTextToHTML(origPlain)
 		}
-		fwdHTML = formatForwardedMessageHTML(inputs.note, signature, origFrom, origDate, origSubject, origTo, origCc, htmlContent, loc)
+		fwdHTML = formatForwardedMessageHTML(note.htmlVersion(), signature, origFrom, origDate, origSubject, origTo, origCc, htmlContent, loc)
 	}
 
 	// Preserve CID-backed inline resources required by the forwarded HTML and,
@@ -317,13 +333,14 @@ func formatForwardedMessage(note string, signature composeSignature, from, date,
 	return sb.String()
 }
 
-// formatForwardedMessageHTML builds the HTML forwarded body.
-func formatForwardedMessageHTML(note string, signature composeSignature, from, date, subject, to, cc, htmlContent string, loc *time.Location) string {
+// formatForwardedMessageHTML builds the HTML forwarded body. noteHTML is
+// written unescaped; a plain note goes through composeText.htmlVersion first.
+func formatForwardedMessageHTML(noteHTML string, signature composeSignature, from, date, subject, to, cc, htmlContent string, loc *time.Location) string {
 	var sb strings.Builder
 
-	if strings.TrimSpace(note) != "" {
+	if strings.TrimSpace(noteHTML) != "" {
 		sb.WriteString("<div>")
-		sb.WriteString(html.EscapeString(strings.TrimSpace(note)))
+		sb.WriteString(strings.TrimSpace(noteHTML))
 		sb.WriteString("</div><br>")
 	}
 	if block := signature.htmlBlock(); block != "" {

@@ -303,19 +303,15 @@ func applyQuoteToBodies(plainBody string, htmlBody string, quote bool, info *rep
 		return plainBody, htmlBody
 	}
 
-	userPlain := plainBody
-	hasHTMLReply := strings.TrimSpace(htmlBody) != ""
-	if strings.TrimSpace(userPlain) == "" && hasHTMLReply {
-		userPlain = htmlToPlainText(htmlBody)
-	}
+	reply := composeText{plain: plainBody, html: htmlBody}
 
 	quotedPlain := info.Body
 	if strings.TrimSpace(quotedPlain) == "" && strings.TrimSpace(info.BodyHTML) != "" {
 		quotedPlain = htmlToPlainText(info.BodyHTML)
 	}
 
-	outPlain := userPlain
-	if quotedPlain != "" && (!hasHTMLReply || strings.TrimSpace(userPlain) != "") {
+	outPlain := reply.plainVersion()
+	if quotedPlain != "" && !reply.htmlOnlyWithoutText() {
 		outPlain += formatQuotedMessage(info.FromAddr, info.Date, quotedPlain, loc)
 	}
 
@@ -329,14 +325,7 @@ func applyQuoteToBodies(plainBody string, htmlBody string, quote bool, info *rep
 
 	quoteHTML := formatQuotedMessageHTMLWithContent(info.FromAddr, info.Date, quoteContent, loc)
 
-	outHTML := htmlBody
-	if strings.TrimSpace(outHTML) == "" {
-		outHTML = escapeTextToHTML(strings.TrimSpace(userPlain)) + quoteHTML
-	} else {
-		outHTML += quoteHTML
-	}
-
-	return outPlain, outHTML
+	return outPlain, reply.htmlVersion() + quoteHTML
 }
 
 // formatQuotedMessage formats the original message as a quoted reply.
