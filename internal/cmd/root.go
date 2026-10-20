@@ -344,6 +344,10 @@ func executeWithRuntime(args []string, runtime *app.Runtime) (err error) {
 	ctx = authclient.WithClient(ctx, cli.Client)
 	ctx = authclient.WithAccessToken(ctx, directAccessToken(&cli.RootFlags))
 	ctx = authclient.WithQuotaProject(ctx, cli.QuotaProject)
+	ctx, err = googleapi.WithAPIBaseURL(ctx, os.Getenv("GOG_GOOGLE_API_BASE_URL"))
+	if err != nil {
+		return reportEarlyError(kctx, runtimeIO.Err, newUsageError(err))
+	}
 
 	uiColor := cli.Color
 	if outfmt.IsJSON(ctx) || outfmt.IsPlain(ctx) {
