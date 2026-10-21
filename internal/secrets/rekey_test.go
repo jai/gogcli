@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1005,5 +1006,148 @@ func TestCheckRekeyBackend(t *testing.T) {
 		if (err == nil) != tc.allowed {
 			t.Fatalf("backend %s/%s/%s: %v", tc.backend, tc.goos, tc.dbus, err)
 		}
+	}
+}
+
+func TestRekey_ConcurrentOutputRequiresForce(t *testing.T) {
+	first, dir := rekeyFixture(t)
+	second := first
+	second.NewPassword = "second-output-password"
+	before := snapshotRekeyDir(t, dir)
+	staged := make(chan struct{})
+	resume := make(chan struct{})
+
+	release := sync.OnceFunc(func() { close(resume) })
+	defer release()
+
+	paused := false
+	first.openOutput = func(path, password string) (keyring.Keyring, error) {
+		if !paused {
+			paused = true
+
+			close(staged)
+			<-resume
+		}
+
+		return openRekeyOutput(path, password)
+	}
+	done := make(chan error, 1)
+
+	go func() {
+		_, err := Rekey(first)
+		done <- err
+	}()
+
+	select {
+	case <-staged:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first export did not reach staging")
+	}
+
+	if _, err := Rekey(second); err != nil {
+		t.Fatal(err)
+	}
+	outputBefore := snapshotRekeyDir(t, second.OutDir)
+
+	release()
+
+	if err := <-done; !errors.Is(err, errRekeyOutputNotEmpty) {
+		t.Fatalf("concurrent export replaced output without force: %v", err)
+	}
+
+	if !reflect.DeepEqual(outputBefore, snapshotRekeyDir(t, second.OutDir)) {
+		t.Fatal("refused export changed the published output")
+	}
+
+	if !reflect.DeepEqual(before, snapshotRekeyDir(t, dir)) {
+		t.Fatal("concurrent exports changed the live keyring")
+	}
+}
+
+func TestRekey_RejectsChangedOutputPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix mode bits do not represent Windows ACLs")
+	}
+
+	opts, dir := rekeyFixture(t)
+	if err := os.Chmod(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	before := snapshotRekeyDir(t, dir)
+
+	opts.openOutput = func(path, password string) (keyring.Keyring, error) {
+		if err := os.Chmod(path, 0o700); err != nil {
+			return nil, fmt.Errorf("change staged permissions: %w", err)
+		}
+
+		return openRekeyOutput(path, password)
+	}
+	if _, err := Rekey(opts); !errors.Is(err, errRekeyOutputPermissions) {
+		t.Fatalf("want output permissions mismatch, got %v", err)
+	}
+
+	if _, err := os.Stat(opts.OutDir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("permission mismatch published output")
+	}
+
+	if !reflect.DeepEqual(before, snapshotRekeyDir(t, dir)) {
+		t.Fatal("permission mismatch changed the live keyring")
+	}
+}
+
+func TestRekey_RejectsDroppedSetgid(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("exercises macOS inherited-group chmod behavior")
+	}
+
+	opts, dir := rekeyFixture(t)
+	if err := os.Chown(dir, -1, os.Getgid()); err != nil {
+		t.Skipf("cannot assign the caller's group to the fixture: %v", err)
+	}
+
+	mode := os.FileMode(0o750) | os.ModeSetgid
+	if err := os.Chmod(dir, mode); err != nil {
+		t.Fatal(err)
+	}
+
+	sourceInfo, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if sourceInfo.Mode()&os.ModeSetgid == 0 {
+		t.Skip("source filesystem did not retain setgid")
+	}
+
+	probe, err := os.MkdirTemp(filepath.Dir(opts.OutDir), "permission-probe-")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err = os.Chmod(probe, mode); err != nil {
+		t.Fatal(err)
+	}
+
+	probeInfo, err := os.Stat(probe)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if probeInfo.Mode()&os.ModeSetgid != 0 {
+		t.Skip("output parent supports setgid; no differing-group fixture")
+	}
+
+	before := snapshotRekeyDir(t, dir)
+	if _, rekeyErr := Rekey(opts); !errors.Is(rekeyErr, errRekeyOutputPermissions) {
+		t.Fatalf("want dropped-setgid refusal, got %v", rekeyErr)
+	}
+
+	if _, statErr := os.Stat(opts.OutDir); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatal("dropped setgid published output")
+	}
+
+	if !reflect.DeepEqual(before, snapshotRekeyDir(t, dir)) {
+		t.Fatal("permission refusal changed the live keyring")
 	}
 }

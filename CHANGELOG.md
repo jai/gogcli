@@ -2,6 +2,8 @@
 
 ## 0.45.1 - Unreleased
 
+- Auth: serialize rekey output publication, recheck concurrent replacement permission and refuse staged permission loss. (jai/gogcli#1)
+
 - Chat: add full SDK message output for list/search, get with markup selection, text-only update/edit, and confirmed delete with explicit reply deletion; preserve compact defaults and wrap nested rich content for agents. (jai/gogcli#1) — thanks @jai.
 
 - Dependencies: refresh the Google API client, golangci-lint, Cloudflare Workers types, Wrangler, PostCSS, and Undici while retaining Go 1.26, pnpm 11, and the worker’s 24-hour release cooldown.

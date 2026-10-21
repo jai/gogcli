@@ -21,16 +21,17 @@ import (
 const keyringBackendFile = "file"
 
 var (
-	ErrRekeyNotFileBackend  = errors.New("rekey requires the file keyring backend")
-	ErrRekeySamePassword    = errors.New("new password must differ from the current password")
-	ErrRekeyNoOldPassword   = errors.New("no current keyring password provided; set GOG_KEYRING_PASSWORD or run on a TTY")
-	ErrRekeyNoNewPassword   = errors.New("no new password provided; set GOG_KEYRING_NEW_PASSWORD or run on a TTY")
-	errRekeyUnreadableItems = errors.New("keyring items cannot be decrypted with the current password")
-	errRekeyNoReadableItems = errors.New("the current password does not open any keyring item")
-	errRekeyContentMismatch = errors.New("keyring content mismatch")
-	errRekeyUnsafeOutput    = errors.New("output directory overlaps the live keyring")
-	errRekeyOutputNotEmpty  = errors.New("output directory is not empty; use --force to replace it")
-	errRekeyNoOutput        = errors.New("output directory is required; pass it as the positional argument")
+	ErrRekeyNotFileBackend    = errors.New("rekey requires the file keyring backend")
+	ErrRekeySamePassword      = errors.New("new password must differ from the current password")
+	ErrRekeyNoOldPassword     = errors.New("no current keyring password provided; set GOG_KEYRING_PASSWORD or run on a TTY")
+	ErrRekeyNoNewPassword     = errors.New("no new password provided; set GOG_KEYRING_NEW_PASSWORD or run on a TTY")
+	errRekeyUnreadableItems   = errors.New("keyring items cannot be decrypted with the current password")
+	errRekeyNoReadableItems   = errors.New("the current password does not open any keyring item")
+	errRekeyContentMismatch   = errors.New("keyring content mismatch")
+	errRekeyOutputPermissions = errors.New("output permissions differ from live keyring")
+	errRekeyUnsafeOutput      = errors.New("output directory overlaps the live keyring")
+	errRekeyOutputNotEmpty    = errors.New("output directory is not empty; use --force to replace it")
+	errRekeyNoOutput          = errors.New("output directory is required; pass it as the positional argument")
 )
 
 // RekeyOptions describes an output-only keyring password change.
@@ -186,20 +187,28 @@ func rekeyLocked(opts RekeyOptions, dir, out string) (RekeyResult, error) {
 		return res, err
 	}
 
-	if err := syncRekeyOutput(stage); err != nil {
+	stageInfo, err := os.Stat(stage)
+	if err != nil {
+		return res, fmt.Errorf("stat staged permissions: %w", err)
+	}
+
+	if got := stageInfo.Mode() & (os.ModePerm | os.ModeSetuid | os.ModeSetgid | os.ModeSticky); got != mode {
+		return res, fmt.Errorf("%w: got %v, want %v", errRekeyOutputPermissions, got, mode)
+	}
+
+	if err = syncRekeyOutput(stage); err != nil {
 		return res, err
 	}
 
-	if err := publishRekeyOutput(stage, out); err != nil {
+	replaced, err := publishRekeyOutput(stage, out, opts.Force)
+	if err != nil {
 		var recovery *rekeyRecoveryError
 		cleanupStage = !errors.As(err, &recovery)
 
 		return res, err
 	}
 
-	for _, entry := range entries {
-		res.Replaced = append(res.Replaced, entry.Name())
-	}
+	res.Replaced = replaced
 	res.Keys = keys
 	res.Items = len(items)
 	res.RetainedDir = rekeyRetainedDir(dir, out)
@@ -444,8 +453,33 @@ func syncRekeyOutput(dir string) error {
 
 // Existing output is exchanged as a whole; stage then holds the previous output.
 // A failed durability barrier exchanges it back before the caller cleans stage.
-func publishRekeyOutput(stage, out string) error {
-	return publishRekeyOutputWith(stage, out, exchangeRekeyDirs, syncRekeyDir)
+func publishRekeyOutput(stage, out string, force bool) ([]string, error) {
+	// Lock outside the exchanged directory so every export to this parent
+	// uses the same lock inode, including exports from different live stores.
+	lock := sharedKeyringLock(filepath.Join(filepath.Dir(out), ".gogcli-rekey-output.lock"), parseKeyringLockTimeout(os.Getenv(keyringLockTimeoutEnv)))
+	var replaced []string
+	err := lock.withWriteLock(func() error {
+		entries, err := os.ReadDir(out)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("read output before publication: %w", err)
+		}
+
+		if len(entries) > 0 && !force {
+			return errRekeyOutputNotEmpty
+		}
+
+		if err := publishRekeyOutputWith(stage, out, exchangeRekeyDirs, syncRekeyDir); err != nil {
+			return err
+		}
+
+		for _, entry := range entries {
+			replaced = append(replaced, entry.Name())
+		}
+
+		return nil
+	})
+
+	return replaced, err
 }
 
 func publishRekeyOutputWith(stage, out string, exchange func(string, string) error, syncDir func(string) error) error {
