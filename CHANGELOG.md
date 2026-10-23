@@ -6,6 +6,8 @@
 
 - Chat: add full SDK message output for list/search, get with markup selection, text-only update/edit, and confirmed delete with explicit reply deletion; preserve compact defaults and wrap nested rich content for agents. (jai/gogcli#1) — thanks @jai.
 
+- Security: upgrade Alpine's default CA packages in Docker image build and runtime stages to reject the compromised eMudhra certificate chains. (#1244) — thanks @joshavant.
+
 ## 0.46.0 - 2026-10-20
 
 **Highlights:** Safely re-encrypt auth stores, route Google API calls through credential-free relays, and compose richer Gmail forwards, with Go security fixes.
