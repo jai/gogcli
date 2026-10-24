@@ -313,6 +313,7 @@ type GmailDraftsCreateCmd struct {
 	From                    string   `name:"from" help:"Send from this email address (must be a verified send-as alias)"`
 	AutoFromAddressedAlias  bool     `name:"auto-from-addressed-alias" help:"When --from is omitted, reply from the verified send-as alias addressed by the original message" env:"GOG_GMAIL_AUTO_FROM_ADDRESSED_ALIAS"`
 	composeSignatureOptions `embed:""`
+	composeTextHTMLOptions  `embed:""`
 }
 
 type draftComposeInput struct {
@@ -815,6 +816,7 @@ func (c *GmailDraftsCreateCmd) Run(ctx context.Context, flags *RootFlags) error 
 	if err != nil {
 		return err
 	}
+	htmlBody = c.withTextHTML(body, htmlBody)
 	replyToMessageID := normalizeGmailMessageID(c.ReplyToMessageID)
 	threadID := normalizeGmailThreadID(c.ThreadID)
 	if replyToMessageID != "" && threadID != "" {
@@ -921,6 +923,7 @@ type GmailDraftsUpdateCmd struct {
 	From                    string `name:"from" help:"Send from this email address (must be a verified send-as alias)"`
 	AutoFromAddressedAlias  bool   `name:"auto-from-addressed-alias" help:"When --from is omitted, reply from the verified send-as alias addressed by the original message" env:"GOG_GMAIL_AUTO_FROM_ADDRESSED_ALIAS"`
 	composeSignatureOptions `embed:""`
+	composeTextHTMLOptions  `embed:""`
 	ccProvided              bool
 	bccProvided             bool
 }
@@ -952,6 +955,7 @@ func (c *GmailDraftsUpdateCmd) runCompose(ctx context.Context, flags *RootFlags)
 	if err != nil {
 		return err
 	}
+	htmlBody = c.withTextHTML(body, htmlBody)
 	replyToMessageID := normalizeGmailMessageID(c.ReplyToMessageID)
 	threadID := normalizeGmailThreadID(c.ThreadID)
 	if replyToMessageID != "" && threadID != "" {

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/alecthomas/kong"
+	"golang.org/x/oauth2"
 
 	"github.com/openclaw/gogcli/internal/app"
 	"github.com/openclaw/gogcli/internal/authclient"
@@ -21,6 +22,7 @@ import (
 	"github.com/openclaw/gogcli/internal/secrets"
 	"github.com/openclaw/gogcli/internal/termutil"
 	"github.com/openclaw/gogcli/internal/ui"
+	"github.com/openclaw/gogcli/internal/zoom"
 )
 
 const (
@@ -235,7 +237,8 @@ func executeWithRuntime(args []string, runtime *app.Runtime) (err error) {
 	}
 	previousLogger := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(runtimeIO.Err, &slog.HandlerOptions{
-		Level: logLevel,
+		Level:       logLevel,
+		ReplaceAttr: formatLogError,
 	})))
 	defer slog.SetDefault(previousLogger)
 
@@ -479,6 +482,14 @@ func applyExplicitOutputModePrecedence(kctx *kong.Context, flags *RootFlags) err
 		flags.JSON = false
 	}
 	return nil
+}
+
+func formatLogError(_ []string, attr slog.Attr) slog.Attr {
+	var retrieveErr *oauth2.RetrieveError
+	if logErr, ok := attr.Value.Any().(error); ok && (errors.As(logErr, &retrieveErr) || errors.Is(logErr, zoom.ErrZoomTokenRequestFailed)) {
+		return slog.String(attr.Key, errfmt.Format(logErr))
+	}
+	return attr
 }
 
 func reportEarlyError(kctx *kong.Context, w io.Writer, err error) error {
