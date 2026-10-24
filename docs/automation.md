@@ -63,6 +63,13 @@ system. Chat message and thread listings also wrap flattened sender display
 names. Raw Chat JSON responses, including those from `gog api call`, wrap
 `formattedText` too. Without the flag, ordinary JSON strings remain unchanged.
 
+Full Chat list/search output (`--full --json`) and message get/update output
+wrap nested rich content, including card subtitles, labels, alt text, filenames,
+and button text. Structurally validated resource names and HTTP(S) URLs remain
+usable; dotted selections retain these rules. Compact defaults are unchanged.
+Full Chat JSON is SDK-typed rather than raw/lossless, and image/attachment bytes
+are never fetched. See [Chat rich messages](chat-rich-messages.md).
+
 Use `--readonly` (or `GOG_READONLY=1`) as a runtime backstop. It permits GET,
 HEAD, OPTIONS, and the small allowlist of Google APIs whose query operations use
 POST, while rejecting mutating API requests before network dispatch. This guard
@@ -164,8 +171,10 @@ least-privilege read against the intended service.
 
 ## Exit codes
 
-Google API rate-limit retries honor `Retry-After` delays up to 60 seconds per
-retry, including numeric seconds and HTTP dates. Cancelling the command also
+Google API rate-limit retries cover HTTP 429 and HTTP 403 responses whose
+reason is `rateLimitExceeded` or `userRateLimitExceeded`. They honor
+`Retry-After` delays up to 60 seconds per retry, including numeric seconds and
+HTTP dates. Cancelling the command also
 cancels a pending retry wait. Upload bodies are closed even when a request is
 rejected by the circuit breaker or cannot be buffered for retry, so those
 failures release the associated file or stream resources.

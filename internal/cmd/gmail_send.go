@@ -34,6 +34,7 @@ type GmailSendCmd struct {
 	Attach                  []string `name:"attach" help:"Attachment file path (repeatable)"`
 	From                    string   `name:"from" help:"Send from this email address (must be a verified send-as alias)"`
 	composeSignatureOptions `embed:""`
+	composeTextHTMLOptions  `embed:""`
 	Track                   bool `name:"track" help:"Enable open tracking (requires tracking setup)"`
 	TrackSplit              bool `name:"track-split" help:"Send tracked messages separately per recipient"`
 	Quote                   bool `name:"quote" help:"Include quoted original message in reply (requires --reply-to-message-id or --thread-id)"`
@@ -91,6 +92,7 @@ func (c *GmailSendCmd) Run(ctx context.Context, flags *RootFlags) error {
 	if err != nil {
 		return err
 	}
+	htmlBodyInput = c.withTextHTML(body, htmlBodyInput)
 
 	if replyToMessageID != "" && threadID != "" {
 		return usage("use only one of --reply-to-message-id or --thread-id")
@@ -293,6 +295,7 @@ func (c *GmailSendCmd) rawModeConflict() string {
 		{strings.TrimSpace(c.BodyFile) != "", "--body-file"},
 		{c.BodyHTML != "", "--body-html"},
 		{strings.TrimSpace(c.BodyHTMLFile) != "", "--body-html-file"},
+		{c.HTMLFromText, "--html-from-text"},
 		{strings.TrimSpace(c.ReplyToMessageID) != "", "--reply-to-message-id"},
 		{c.ReplyAll, "--reply-all"},
 		{strings.TrimSpace(c.ReplyTo) != "", "--reply-to"},

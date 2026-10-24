@@ -15,7 +15,7 @@ output, safety, and live-write rules.
 ```bash
 gog auth list --check --json --no-input
 gog schema chat --json
-gog --readonly --account user@example.com chat --help
+gog --readonly --account user@example.com chat messages list spaces/SPACE_ID --full --json --wrap-untrusted
 ```
 
 - Select the account explicitly with `--account`.
@@ -23,6 +23,17 @@ gog --readonly --account user@example.com chat --help
 - Use `--readonly` when the task must not mutate Google data.
 - Use `--no-input` in automation and `--dry-run` before supported writes.
 - Confirm the exact account, object, and mutation before any write or delete.
+
+## Rich messages
+
+- List/search default to compact output; add `--full --json` for full SDK-known message content. This is typed JSON, not raw/lossless output.
+- `messages get spaces/SPACE/messages/MESSAGE --json` returns a full message; bare IDs require `--space`.
+- `--view full` is a search provider option for read/mute metadata, independent of `--full`. List/search/get accept `--markup chat|markdown`.
+- Full output includes card, image, GIF, and attachment metadata/URLs; it never fetches image or attachment bytes.
+- Use `--wrap-untrusted` for nested card text, labels, filenames and alt text, including with `--results-only --select`.
+- `messages update` (alias `edit`) requires `--text` and patches only text. Explicit empty text is sent; provider validation still applies.
+- `messages delete` requires confirmation; root `--force` bypasses only the CLI prompt. `--delete-replies` separately enables Google's threaded-reply deletion.
+- Preview mutations with `--dry-run`. Readonly blocks mutations. Google ownership/permissions still apply; these commands cannot edit app cards.
 
 ## Commands
 

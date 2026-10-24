@@ -1,13 +1,54 @@
 # Changelog
 
-## 0.44.1 - Unreleased
+## 0.47.1 - Unreleased
 
-- Output: warn on stderr when a `--select` path matches no objects in a nonempty result, preserving JSON output and exit status. (#1210) — thanks @postoso.
-- Auth: clarify that `auth login` opens the browser account manager, and document manual authorization and unattended health checks. (#1214) — thanks @jingtying.
-- Dependencies: refresh Google API and MCP clients plus tracking-worker tooling within the Go 1.26 floor and 24-hour worker release cooldown; add a non-publishing release-pipeline dry run.
+- Auth: serialize rekey output publication, recheck concurrent replacement permission and refuse staged permission loss. (jai/gogcli#1)
+
+- Chat: add full SDK message output for list/search, get with markup selection, text-only update/edit, and confirmed delete with explicit reply deletion; preserve compact defaults and wrap nested rich content for agents. (jai/gogcli#1) — thanks @jai.
+
+## 0.47.0 - 2026-10-23
+
+**Highlights:** Opt-in HTML Gmail bodies, selected search headers, and calendar settings updates, with OAuth error redaction and certificate trust fixes.
+
+- Gmail: add opt-in `--html-from-text` (or `GOG_GMAIL_HTML_FROM_TEXT`) to generate an escaped HTML alternative for plain send, reply, and draft bodies; preserve plain-text defaults and explicit HTML. (#1251) — thanks @mathieu-ships.
+- Gmail: expose up to 50 selected headers in message-search JSON and MCP with `--headers`, reusing existing reads and preserving sanitization and untrusted-content wrapping. (#1190, #1249) — thanks @obokaman-com.
+- Calendar: add `update-calendar` to inspect or patch calendar-level names, descriptions, locations, and timezones, with field validation, offline previews, and explicit optional-field clearing. (#1245) — thanks @sorenisanerd.
+- Auth: omit OAuth provider descriptions, URLs, and response bodies from command errors, per-item results, backup diagnostics, health checks, and watch/verbose logs; retain fixed recovery guidance, authentication exit codes, and both Calendar/Zoom rollback causes. (#1243) — thanks @pkyIntelligence.
+- Security: upgrade Alpine's default CA packages in Docker image build and runtime stages to reject the compromised eMudhra certificate chains. (#1244) — thanks @joshavant.
+- Auth: make Google Ads (`ads`) an explicit opt-in instead of part of the default `user`/`all-user` set; Google can gate the Ads scope behind mandatory passkey enrollment, which blocked ordinary reauth. Request it with `--services user,ads`.
+- Dependencies: update Pub/Sub, Google API and x/tools plus Cloudflare Workers types and Wrangler; retain Go 1.26 and the tracking worker’s 24-hour release cooldown.
+- Gmail: retry 403 rate limits with the existing bounded backoff and stop remaining detail fetches when a search fails; preserve error bodies and open the watch circuit on 403 rate limits. (#1241, #1242) — thanks @xyrolle.
+- Gmail: leave quoted search operators to Gmail instead of silently narrowing results with label filters. (#1247) — thanks @SebTardif.
+- Gmail: include nonempty Cc and Bcc headers in thread text output. (#1248) — thanks @alexpriest.
+- Gmail: preserve the direction of reply and forward headers beside right-to-left text, and add Gmail's quote classes without altering plain text or quoted content. (#1250) — thanks @malob.
+- Drive: preserve requested false booleans in list/search JSON, including grouped fields, slash paths, and wildcards; keep conditionally absent fields omitted. (#1246) — thanks @SebTardif.
+
+## 0.46.0 - 2026-10-20
+
+**Highlights:** Safely re-encrypt auth stores, route Google API calls through credential-free relays, and compose richer Gmail forwards, with Go security fixes.
+
+- Auth: add `gog auth rekey <outdir>` to write and verify a separate re-encrypted directory while leaving the live keyring untouched; hold the store lock throughout, publish only complete fsynced output, and retain the old directory during installation. (#1224) — thanks @sorenisanerd.
+- Google APIs: add `GOG_GOOGLE_API_BASE_URL` to send `*.googleapis.com` requests to a test server, emulator, proxy, or relay that adds credentials outside gog; requests keep path and query, pass the original host as `X-Forwarded-Host`, carry no gog credentials, and refuse cross-origin redirects. (#1225, #1226) — thanks @km-tr.
+- Gmail: add `--note-html` and `--note-html-file` to forwards and preserve plain-note line breaks in HTML output. (#1215) — thanks @malob.
+- Auth: accept `gog auth <email>` as shorthand for `gog auth add <email>`; bare `gog auth` and mistyped subcommands keep their existing errors. (#1221)
+- Gmail: lay out the forwarded-message header block the way Gmail Web does: plain text with the sender's name in bold, `Name <email>` (or `<email>`) for the sender and each recipient with addresses linked in HTML, and two blank lines before the original body. (#1236) — thanks @malob.
+- Drive: preserve requested top-level false booleans in `drive get --json`, including the default `starred` and `hasThumbnail` fields; keep conditionally absent fields omitted. (#1223) — thanks @postoso.
+- Security: build release binaries and Docker images with Go 1.27.3 and test the minimum series with Go 1.26.10 to address the crypto/x509 vulnerability GO-2026-6809, while preserving the Go 1.26 minimum.
+- CI: use macOS 27 runners for Darwin checks and release preflight while enforcing the macOS 15.0 deployment target.
+- Dependencies: refresh the Google API client and generated API definitions while retaining the Go 1.26 minimum and the tracking worker's 24-hour release cooldown.
+- Dependencies: refresh the Google API client, golangci-lint, Cloudflare Workers types, Wrangler, PostCSS, and Undici while retaining Go 1.26, pnpm 11, and the worker’s 24-hour release cooldown.
+- Dependencies: update Vitest and Cloudflare Workers types within the worker’s 24-hour release cooldown.
+- Dependencies: refresh Wrangler, Cloudflare Workers types, Oxlint, and Oxfmt within the tracking worker's 24-hour release cooldown.
+
+## 0.45.0 - 2026-10-16
+
+**Highlights:** Preserve Gmail search results for negated and OR queries, warn about unmatched JSON selections, and improve reply formatting.
 
 - Gmail: derive `labelIds` only from system-label terms that hold for every result; a term under `NOT` or `-`, inside a negated group, or in a query with `OR`, `|` or `{…}` is left to Gmail, so `search`, `--count`, `archive`, `trash`, `mark-read`, `unread` and `autoreply` no longer silently narrow such queries. (#1212) — thanks @wstock.
+- Output: warn on stderr when a `--select` path matches no objects in a nonempty result, preserving JSON output and exit status. (#1210) — thanks @postoso.
 - Gmail: render the reply attribution line the way Gmail Web does in both text and HTML: no comma after the date, `Name <email>` (or `<email>`) with the address linked in HTML, and a narrow no-break space before AM/PM (also in forwarded `Date:` lines). (#1213) — thanks @malob.
+- Auth: clarify that `auth login` opens the browser account manager, and document manual authorization and unattended health checks. (#1214) — thanks @jingtying.
+- Dependencies: refresh Google API and MCP clients plus tracking-worker tooling within the Go 1.26 floor and 24-hour worker release cooldown; add a non-publishing release-pipeline dry run.
 
 ## 0.44.0 - 2026-10-11
 

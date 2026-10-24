@@ -206,6 +206,7 @@ func TestGmailDraftsRawRejectsComposeFlags(t *testing.T) {
 		{"--reply-all"},
 		{"--quote"},
 		{"--auto-from-addressed-alias"},
+		{"--html-from-text"},
 	}
 	for _, operation := range []string{"create", "update"} {
 		cases := append([][]string(nil), common...)

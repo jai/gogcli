@@ -37,6 +37,7 @@ type GmailReplyOptions struct {
 	From                    string   `name:"from" help:"Send from this email address (must be a verified send-as alias)"`
 	AutoFromAddressedAlias  bool     `name:"auto-from-addressed-alias" help:"When --from is omitted, reply from the verified send-as alias addressed by the original message" env:"GOG_GMAIL_AUTO_FROM_ADDRESSED_ALIAS"`
 	composeSignatureOptions `embed:""`
+	composeTextHTMLOptions  `embed:""`
 }
 
 func (c *GmailReplyCmd) Run(ctx context.Context, flags *RootFlags) error {
@@ -146,6 +147,7 @@ func (c *GmailReplyOptions) resolveReplyInputs(ctx context.Context, messageID st
 	if err != nil {
 		return replyComposeInputs{}, err
 	}
+	htmlBody = c.withTextHTML(body, htmlBody)
 	if strings.TrimSpace(body) == "" && strings.TrimSpace(htmlBody) == "" {
 		return replyComposeInputs{}, usage("required: --body, --body-file, --body-html, or --body-html-file")
 	}

@@ -36,6 +36,7 @@ gog gmail (mail,email) autoreply <query> ... [flags]
 | `--gmail-no-send` | `bool` | false | Block Gmail send operations (agent safety) |
 | `-h`<br>`--help` | `kong.helpFlag` |  | Show context-sensitive help. |
 | `--home` | `string` |  | Override gogcli config/data/state/cache root (equivalent to GOG_HOME) |
+| `--html-from-text` | `bool` |  | When only a plain body is given, also send it as HTML so Gmail web reflows paragraphs instead of breaking lines about every 70 characters |
 | `-j`<br>`--json`<br>`--machine` | `bool` | false | Output JSON to stdout (best for scripting) |
 | `--label` | `string` | AutoReplied | Label to add after replying (used for dedupe) |
 | `--mark-read` | `bool` |  | Mark threads as read after auto-replying |
