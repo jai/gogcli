@@ -14,6 +14,11 @@ The server registers a small set of typed tools such as `gmail_search`,
 specific `gog` operation, and returns a structured result containing the tool
 name, service, risk level, exit code, parsed stdout, and stderr.
 
+`gmail_search` and `calendar_events` return one bounded page. Pass the returned
+`nextPageToken` as the optional `page` argument to continue, keeping the same
+query, calendar, and time window. Omit `page` for the first request. Paging does
+not require write permission or change the maximum results per call.
+
 ## Quick start
 
 Start a read-only server for one account:
@@ -152,8 +157,8 @@ An account entry is a complete replacement for the global policy, not a partial
 merge. Account keys are matched case-insensitively after aliases and automatic
 account selection are resolved, then that resolved account is pinned for every
 MCP child command. Per-account policies require stored account credentials;
-direct access tokens and ADC can use only the global policy because an account
-label does not prove the authenticated principal. An omitted `allow_tools` value defaults to
+direct access tokens, ADC, and `GOG_GOOGLE_API_BASE_URL` can use only the global
+policy because an account label does not prove the authenticated principal. An omitted `allow_tools` value defaults to
 `["read"]`; an explicitly empty list is rejected. `allow_write: true` requires
 an explicit tool list so a typo cannot accidentally expose every write tool.
 
@@ -477,6 +482,10 @@ Defaults:
 
 - timeout: 60 seconds
 - max captured stdout/stderr: 102400 bytes each
+
+The timeout is an overall deadline that includes API requests and retry waits.
+The API retry budget does not extend it. Set `--timeout-seconds` explicitly when
+a tool call needs a longer quota-recovery window.
 
 Use command-specific limits too. For example, `docs_get` has a `max_bytes`
 argument, and search tools have `max` arguments.

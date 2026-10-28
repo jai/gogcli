@@ -24,8 +24,25 @@ gog gmail search --max 2 --json -- '-in:inbox newer_than:7d'
 gog gmail messages search --max 2 --json -- '-in:inbox newer_than:7d'
 ```
 
+Both searches fetch each result's headers and labels with one extra API call
+per result. For bulk jobs that only need IDs, `--ids-only` returns what Gmail's
+list call already holds (`id` and `threadId` for messages, `id` for threads) and
+makes one list call per page. Combine it with `--all --max 500`, Gmail's largest
+page, and pass the IDs to `gmail batch modify`, which takes up to 1,000 IDs per call:
+
+```bash
+gog gmail messages search 'list:example.com' --all --max 500 --ids-only --json --results-only |
+  jq -r '.[].id' | xargs -n 1000 gog gmail batch modify --add-label Newsletters
+```
+
+`--ids-only` rejects `--include-body`, `--full`, `--include-attachments`,
+`--include-recipients`, `--headers`, `--sanitize-content`, and, for `gmail search`, `--oldest`.
+
 Thread searches fail if any thread detail cannot be fetched, without emitting a
-partial result list. Retry the search after resolving the reported API error.
+partial result list, and stop the detail requests still pending. Retry the
+search after resolving the reported API error.
+
+Quoted operators such as `"is:unread"` are literal phrases and are passed to Gmail without adding a label filter. `gmail thread get` includes nonempty Cc and Bcc headers in its text output.
 
 ### Full payloads and raw MIME
 
@@ -98,6 +115,25 @@ sender and recipient display text as untrusted, including with `--results-only`
 and `--select`. MCP `gmail_search` exposes `include_recipients` and
 `sanitize_content` with the same behavior.
 
+To include other headers in JSON results, such as mailing-list ones, name them
+with `--headers` (up to 50 names, each at most 256 bytes; printable ASCII
+without spaces or colons):
+
+```bash
+gog gmail messages search 'newer_than:7d' --headers List-Id,Sender --json |
+  jq -r '.messages[] | .headers["List-Id"]'
+```
+
+Each result gets a `headers` object keyed by the canonical header name, whatever
+case you typed: `list-id` becomes `List-Id`, and acronyms are not kept, so
+`Message-ID` becomes `Message-Id`. These are real header names, unlike the
+snake_case keys of the `headers` object in `gmail get`. A header the message
+lacks is an empty string, and a repeated one gives its first value. The headers
+come from the same per-message read, so there are no extra API calls;
+`--sanitize-content` and `--wrap-untrusted` apply to them as to the other header
+fields. Combines with `--include-recipients`. MCP `gmail_search` takes the names
+as a `headers` array.
+
 Message JSON exposes Reply-To as `headers.reply_to` in both full and default
 metadata reads. With `--sanitize-content`, use `message.headers.reply_to` (or
 `headers.reply_to` with `--results-only`); sanitized thread reads expose it in
@@ -162,6 +198,30 @@ derived from the original message; explicit values, including empty ones,
 override that selection. Dry-run output reports which headers will be kept
 without fetching the draft.
 
+## Plain-Text Bodies in Gmail Web
+
+gog sends `--body` and `--body-file` as text/plain and preserves long logical
+lines. Gmail web still displays a text/plain-only message with its own line
+break about every 70 characters, so paragraphs break mid-sentence in a wide
+window and wrap again on a phone. Mail written in Gmail's composer always
+carries a text/html alternative, which reflows to the window.
+
+`--html-from-text` adds that alternative when only a plain body is given: the
+plain text, HTML-escaped, with each line break kept as `<br>`. The text/plain
+part is unchanged, and an explicit `--body-html` or `--body-html-file` still
+wins. It applies to `gmail send`, `reply`, `reply-all`, `autoreply`, and
+`drafts create`, `update`, `reply`, and `reply-all`; forwards keep their own
+`--note-html` flags. Set `GOG_GMAIL_HTML_FROM_TEXT=1` to turn it on for every
+one of those commands. Like other compose flags it cannot be combined with
+`--raw-file`; with the environment variable set, pass `--html-from-text=false`
+to send or store an exact RFC822 message.
+
+```bash
+gog --account you@example.com gmail send \
+  --to recipient@example.com --subject "Update" \
+  --body-file update.txt --html-from-text
+```
+
 ## Drafts Sent from Gmail Web
 
 gog preserves long logical lines when building a plain-text draft from `--body`
@@ -180,7 +240,8 @@ gog --account you@example.com gmail drafts create \
 
 This creates an HTML draft; it does not change plain-text MIME behavior. Check
 the draft and recipient-client rendering before relying on the workaround for
-a particular workflow.
+a particular workflow. `--html-from-text` gives a plain `--body` draft the same
+kind of HTML part.
 
 ## Signatures on drafts
 
@@ -193,6 +254,25 @@ given in that call.
 
 An HTML signature adds an HTML alternative when the supplied body is plain text,
 preserving image-only signatures and escaping the original body text.
+
+## Text direction in HTML messages
+
+In the HTML part of a message gog sends or saves as a draft, the author's text
+is marked `dir="auto"`, so it takes the direction of its first letter, and
+English text keeps its direction when a reply written right to left quotes it.
+When gog turns plain text into HTML (`--html-from-text`, a `--body` above a quote or beside a
+draft's signature, a `--note`, a plain-text `--signature-file`), each line gets
+a `<div dir="auto">` of its own, as Gmail's mobile apps write it, so a Hebrew
+or Arabic line reads right to left among English ones. HTML given through
+`--body-html` or `--note-html` (or their `-file` forms) goes into one
+`<div dir="auto">`, which follows its first letter as a whole; `dir` attributes
+inside it still apply, so mark the paragraphs of a mixed-language message, or a
+layout table, yourself. A whole HTML document, or HTML that opens with what
+belongs in a document's head (a `<base>`, `<link>`, `<meta>`, `<style>` or
+`<title>`), goes in as given. A signature in a block of its own is marked too;
+with a plain-text reply body, the signature's text is converted along with the
+body. Plain text you give is unchanged, a message with no HTML part has nothing
+to mark, and a `--raw-file` message, sent or saved as a draft, goes as it is.
 
 ## Stage an exact RFC822 message as a draft
 
@@ -434,16 +514,40 @@ gog gmail forward <messageId> --to colleague@example.com --note "FYI"
 gog gmail drafts forward <messageId> --note "FYI"
 ```
 
+The forwarded-message block lists whichever of the original's From, Date,
+Subject, To and Cc it has that aren't blank, in line with Gmail's forwards: the
+sender and each recipient as `Name <email>`, or `<email>` without a name, with
+the addresses linked in the HTML part. A group lists only its members, so a To
+of only `undisclosed-recipients:;` is left empty, and a value that isn't a
+valid address list is shown as it appears in the original. In the HTML part
+this block and a reply's "On … wrote:" line are marked left-to-right, since gog
+writes them in English, and each value taken from the original (a name, an
+address, the subject, the date) keeps its own direction, so a Hebrew or Arabic
+name doesn't reorder the line around it.
+
 Remote HTTP images remain remote references. Only MIME parts referenced with
 `cid:` are copied into the outgoing message.
+
+The note above the forwarded message takes the same forms as a reply body:
+plain text through `--note` or `--note-file`, HTML through `--note-html` or
+`--note-html-file`. One of the two files may be `-` for stdin. A plain note
+keeps its line breaks in the HTML part, an HTML-only note also gets a
+plain-text version, and when both are given each goes to its own part:
+
+```bash
+gog gmail drafts forward <messageId> --note-html '<p>FYI, <b>see below</b>.</p>'
+```
+
+An HTML note with no text, such as a lone image, leaves the forward without a
+plain part unless the signature has text.
 
 `gmail forward` and `gmail drafts forward` accept the same `--signature`,
 `--signature-from`, and `--signature-file` flags as `gmail send`. Gmail does not
 add a signature to messages created through the API, so these flags append it
-between the `--note` and the forwarded message. When the original has only a
-plain-text body, or no body text at all, and the signature has HTML, the forward
-also gets an HTML part with the escaped original text, so an image-only
-signature is not lost.
+between the note and the forwarded message. When the original has only a
+plain-text body, or no body text at all, and the note or the signature has HTML,
+the forward also gets an HTML part with the escaped original text, so an HTML
+note or an image-only signature is not lost.
 
 `gmail send --reply-to-message-id` remains available as lower-level
 composition. It now inherits an omitted subject, but its explicit `--to` and

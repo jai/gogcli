@@ -61,6 +61,7 @@ type UntrustedWrapOptions struct {
 	Source         string
 	IncludeWarning bool
 	contentKeys    map[string]bool
+	chatContent    bool
 }
 
 type untrustedWrapKey struct{}
@@ -240,6 +241,14 @@ func wrapUntrustedGenericValue(v any, opts UntrustedWrapOptions, path []string, 
 
 		return out, wrappedAny
 	case string:
+		if opts.chatContent {
+			if vv != "" && !trustedChatString(path, vv) {
+				return WrapUntrustedContent(vv, opts), true
+			}
+
+			return vv, false
+		}
+
 		if len(path) == 0 && key == "" && vv != "" {
 			return WrapUntrustedContent(vv, opts), true
 		}

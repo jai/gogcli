@@ -27,7 +27,11 @@ func buildCalendarUpdatePatch(input calendarUpdateInput, fields calendarUpdateFi
 		changed = true
 	}
 
-	if applyUpdateAttendees(input, fields, patch) {
+	attendeesChanged, err := applyUpdateAttendees(input, fields, patch)
+	if err != nil {
+		return nil, false, err
+	}
+	if attendeesChanged {
 		changed = true
 	}
 	if applyUpdateAttachments(input, fields, patch) {
@@ -93,6 +97,9 @@ func applyUpdateTextFields(input calendarUpdateInput, fields calendarUpdateField
 	changed := false
 	if fields.Summary {
 		patch.Summary = strings.TrimSpace(input.Summary)
+		if patch.Summary == "" {
+			patch.ForceSendFields = appendForceSendField(patch.ForceSendFields, "Summary")
+		}
 		changed = true
 	}
 	if fields.Description {
@@ -104,6 +111,9 @@ func applyUpdateTextFields(input calendarUpdateInput, fields calendarUpdateField
 	}
 	if fields.Location {
 		patch.Location = strings.TrimSpace(input.Location)
+		if patch.Location == "" {
+			patch.ForceSendFields = appendForceSendField(patch.ForceSendFields, "Location")
+		}
 		changed = true
 	}
 	if input.ResolvedPlace != nil {
@@ -165,12 +175,20 @@ func applyUpdateTimeFields(input calendarUpdateInput, fields calendarUpdateField
 	return changed, nil
 }
 
-func applyUpdateAttendees(input calendarUpdateInput, fields calendarUpdateFields, patch *calendar.Event) bool {
+func applyUpdateAttendees(input calendarUpdateInput, fields calendarUpdateFields, patch *calendar.Event) (bool, error) {
 	if !fields.Attendees {
-		return false
+		return false, nil
 	}
-	patch.Attendees = buildAttendees(input.Attendees)
-	return true
+	attendees := buildAttendees(input.Attendees)
+	if len(attendees) == 0 && strings.TrimSpace(input.Attendees) != "" {
+		return false, usage("--attendees contains no attendee addresses; use an empty value to clear attendees")
+	}
+	patch.Attendees = attendees
+	if len(patch.Attendees) == 0 {
+		patch.Attendees = []*calendar.EventAttendee{}
+		patch.ForceSendFields = appendForceSendField(patch.ForceSendFields, "Attendees")
+	}
+	return true, nil
 }
 
 func applyUpdateAttachments(input calendarUpdateInput, fields calendarUpdateFields, patch *calendar.Event) bool {

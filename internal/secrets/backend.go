@@ -202,11 +202,15 @@ func parseKeyringOpenTimeout(raw, goos string) time.Duration {
 }
 
 func shouldForceFileBackend(goos string, backendInfo KeyringBackendInfo, dbusAddr string) bool {
-	return goos == goosLinux && backendInfo.Value == keyringBackendAuto && dbusAddr == ""
+	return goos == goosLinux && backendInfo.Value == keyringBackendAuto && !hasEnabledDBusAddress(dbusAddr)
 }
 
 func shouldUseKeyringTimeout(goos string, backendInfo KeyringBackendInfo, dbusAddr string) bool {
-	return goos == goosLinux && backendInfo.Value == keyringBackendAuto && dbusAddr != ""
+	return goos == goosLinux && backendInfo.Value == keyringBackendAuto && hasEnabledDBusAddress(dbusAddr)
+}
+
+func hasEnabledDBusAddress(address string) bool {
+	return address != "" && address != "disabled:"
 }
 
 func shouldUseKeyringOperationTimeout(goos string, backendInfo KeyringBackendInfo, dbusAddr string) bool {
@@ -214,7 +218,7 @@ func shouldUseKeyringOperationTimeout(goos string, backendInfo KeyringBackendInf
 		return backendInfo.Value == keyringBackendAuto || backendInfo.Value == keyringBackendKeychain
 	}
 
-	return goos == goosLinux && backendInfo.Value == keyringBackendAuto && dbusAddr != ""
+	return goos == goosLinux && backendInfo.Value == keyringBackendAuto && hasEnabledDBusAddress(dbusAddr)
 }
 
 func keyringTimeoutHint(goos string) string {
@@ -319,11 +323,22 @@ func prepareKeyring(
 	keychainTrustApplication bool,
 	options OpenOptions,
 ) keyring.Keyring {
-	if wrapFileKeys || isFileKeyring(ring) {
-		ring = newFileSafeKeyring(ring)
+	fileBacked := isFileKeyring(ring)
+
+	if wrapFileKeys || fileBacked {
+		dir := ""
+		if fileBacked {
+			dir = options.Layout.KeyringDir()
+		}
+
+		ring = newFileSafeKeyringIn(ring, dir)
 	}
 
-	if shouldUseKeyringOperationTimeout(options.GOOS, backendInfo, options.DBusAddress) {
+	// Not for a real file backend: the timeout runs the operation in a goroutine
+	// that cannot be stopped, so a timed-out write continues after its caller has
+	// returned — and after the lock it held is released, allowing concurrent
+	// operations on the same entry.
+	if !fileBacked && shouldUseKeyringOperationTimeout(options.GOOS, backendInfo, options.DBusAddress) {
 		timeout := options.OpenTimeout
 		if timeout <= 0 {
 			timeout = defaultKeyringOpenTimeout(options.GOOS)

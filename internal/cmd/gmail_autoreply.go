@@ -27,6 +27,8 @@ type GmailAutoReplyCmd struct {
 	MarkRead  bool     `name:"mark-read" help:"Mark threads as read after auto-replying"`
 	SkipBulk  bool     `name:"skip-bulk" help:"Skip auto-generated/list mail" default:"true"`
 	AllowSelf bool     `name:"allow-self" help:"Allow replying to messages sent by your own account/alias"`
+
+	composeTextHTMLOptions `embed:""`
 }
 
 type gmailAutoReplyInput struct {
@@ -91,7 +93,7 @@ func (c *GmailAutoReplyCmd) Run(ctx context.Context, flags *RootFlags) error {
 		Max:       resultLimit,
 		Subject:   strings.TrimSpace(c.Subject),
 		Body:      body,
-		BodyHTML:  c.BodyHTML,
+		BodyHTML:  c.withTextHTML(body, c.BodyHTML),
 		From:      strings.TrimSpace(c.From),
 		ReplyTo:   strings.TrimSpace(c.ReplyTo),
 		Label:     label,
@@ -241,7 +243,7 @@ func runGmailAutoReply(ctx context.Context, svc *gmail.Service, account string, 
 			ReplyTo:   input.ReplyTo,
 			Subject:   autoReplySubject(input.Subject, headerValue(msg.Payload, "Subject")),
 			Body:      input.Body,
-			BodyHTML:  input.BodyHTML,
+			BodyHTML:  directedHTML(input.BodyHTML),
 			ReplyInfo: replyMeta,
 			Headers: map[string]string{
 				"Auto-Submitted":           "auto-replied",
