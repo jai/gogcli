@@ -4,6 +4,8 @@
 
 - Calendar: reject non-empty attendee input that yields no addresses instead of clearing every attendee. (jai/gogcli#1)
 
+- Calendar: carry explicit summary clears into Zoom meeting creation and regeneration. (jai/gogcli#1)
+
 - Auth: serialize rekey output publication, recheck concurrent replacement permission and refuse staged permission loss. (jai/gogcli#1)
 
 - Chat: add full SDK message output for list/search, get with markup selection, text-only update/edit, and confirmed delete with explicit reply deletion; preserve compact defaults and wrap nested rich content for agents. (jai/gogcli#1) — thanks @jai.
