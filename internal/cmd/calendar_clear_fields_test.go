@@ -47,3 +47,23 @@ func TestCalendarUpdateExplicitEmptyFieldsJSON(t *testing.T) {
 		}
 	}
 }
+
+func TestCalendarUpdateRejectsMalformedAttendeeClears(t *testing.T) {
+	for _, value := range []string{";optional", ",,,", " ;resource ", ", ;optional, "} {
+		t.Run(value, func(t *testing.T) {
+			cmd := &CalendarUpdateCmd{}
+			parser, err := kong.New(cmd, kong.Writers(io.Discard, io.Discard))
+			if err != nil {
+				t.Fatal(err)
+			}
+			kctx, err := parser.Parse([]string{"primary", "event1", "--attendees=" + value})
+			if err != nil {
+				t.Fatal(err)
+			}
+			patch, changed, err := buildCalendarUpdatePatch(calendarUpdateInputFromCommand(cmd), calendarUpdateFieldsFromKong(kctx))
+			if err == nil || patch != nil || changed {
+				t.Fatalf("malformed attendees produced a patch: changed=%v patch=%+v err=%v", changed, patch, err)
+			}
+		})
+	}
+}

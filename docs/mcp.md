@@ -483,6 +483,10 @@ Defaults:
 - timeout: 60 seconds
 - max captured stdout/stderr: 102400 bytes each
 
+The timeout is an overall deadline that includes API requests and retry waits.
+The API retry budget does not extend it. Set `--timeout-seconds` explicitly when
+a tool call needs a longer quota-recovery window.
+
 Use command-specific limits too. For example, `docs_get` has a `max_bytes`
 argument, and search tools have `max` arguments.
 
