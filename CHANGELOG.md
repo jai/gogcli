@@ -1,17 +1,34 @@
 # Changelog
 
-## 0.47.1 - Unreleased
+## 0.47.2 - Unreleased
 
 - Auth: serialize rekey output publication, recheck concurrent replacement permission and refuse staged permission loss. (jai/gogcli#1)
 
 - Chat: add full SDK message output for list/search, get with markup selection, text-only update/edit, and confirmed delete with explicit reply deletion; preserve compact defaults and wrap nested rich content for agents. (jai/gogcli#1) — thanks @jai.
-- Dependencies: update Google IAM, GAX, enterprise certificate support, Workers types, Wrangler, and oxlint-tsgolint while retaining Go 1.26 and the tracking worker’s 24-hour release cooldown.
+
+- Dependencies: refresh MCP, Google API/gRPC and networking libraries plus tracking-worker tooling; retain the documented Go minimum, patched build toolchain, release cooldown, and security overrides. (#1274)
+
+- Gmail: add `--ids-only` to `gmail messages search` and `gmail search` to return IDs from the list call without one detail request per result, for bulk jobs that pipe into `gmail batch modify`. (#1257) — thanks @jatinbansal1998.
+
+- Google APIs: raise the rate-limit retry budget from three to six backoffs (63s to just under 94.5s in total) so per-minute quotas such as Gmail's "Units per minute per user" can refill before a command fails. (#1257) — thanks @jatinbansal1998.
+
+- Calendar: honor explicitly empty event summaries, locations, and attendee lists in update requests, while preserving omitted fields. (#1268) — thanks @pkyIntelligence.
+
+- MCP: add optional `page` continuation tokens to `gmail_search` and `calendar_events`, preserving bounded reads and existing CLI pagination. (#1269, #1270) — thanks @pkyIntelligence.
+
+## 0.47.1 - 2026-10-26
+
+**Highlights:** Preserve Gmail text direction and narrowed Calendar grants, fix headless Linux authentication, and reject compromised certificates in the tracking worker.
 
 - Gmail: give the author's own text its direction in HTML (`dir="auto"` on each line of converted plain text, once around given HTML, and on the signature) so right-to-left text reads correctly and English keeps its direction when a right-to-left reply quotes it; whole HTML documents go in as given. (#1255) — thanks @malob.
 
 - Auth: use the encrypted file backend on headless Linux when D-Bus is explicitly disabled, instead of falling through to an uninitialized password store. (#1258) — thanks @pkyIntelligence.
 
 - Auth: preserve Calendar read-only scope selections during automatic reauthorization instead of requesting previously granted broader access. (#1259) — thanks @pkyIntelligence.
+
+- Security: update the tracking worker's workerd runtime to reject compromised eMudhra certificate chains. (#1264) — thanks @joshavant.
+
+- Dependencies: update Google IAM, GAX, enterprise certificate support, Workers types, Wrangler, and oxlint-tsgolint while retaining Go 1.26 and the tracking worker’s 24-hour release cooldown.
 
 ## 0.47.0 - 2026-10-23
 
