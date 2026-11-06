@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.47.2 - Unreleased
+## 0.48.1 - Unreleased
 
 - Calendar: reject non-empty attendee input that yields no addresses instead of clearing every attendee. (jai/gogcli#1)
 
@@ -10,19 +10,53 @@
 
 - Chat: add full SDK message output for list/search, get with markup selection, text-only update/edit, and confirmed delete with explicit reply deletion; preserve compact defaults and wrap nested rich content for agents. (jai/gogcli#1) — thanks @jai.
 
+## 0.48.0 - 2026-11-05
+
+**Highlights:** New backups stay local until you configure a remote; existing configurations keep working. Store service-account keys in the keyring, search Gmail IDs efficiently, and use environment-backed watch tokens, with Calendar fixes and security dependency updates.
+
+The backup changes in #1303 and #1304 preserve existing saved remotes and Git origins. Gmail attachment behavior after delivery (#1300) is contributor-reported; local MIME regression tests pass. Automatic reauthorization (#1278) has synthetic regression coverage but was not tested with a live consent flow.
+
+- Backup: keep new backups local until a remote is configured; preserve saved remotes and existing Git origins, and explain local-only operation. (#1287) — thanks @NasAndNora.
+
+- Backup: allow a locally initialized backup to acquire its first configured remote without replacing an existing origin. (#1287) — thanks @NasAndNora.
+
+- Auth: add optional `auth service-account set --keyring` storage with migration back to files, isolated configuration references, and cleanup on rotation or unset; existing key files remain supported. (#1294) — thanks @tommyjoseph.
+
+- Gmail: give every outgoing attachment a unique, stable `X-Attachment-Id`, including duplicate files, while preserving inline Content-ID references. (#1299, #1300) — thanks @zupolgec.
+
+- Auth: retain the command runtime and OAuth client dependencies during automatic reauthorization, preserving cancellation and the stored service/scope grant. (#1277, #1278) — thanks @TheAngryPit.
+
+- Calendar: reject empty or inverted time windows before querying, keep successful historical search ranges unchanged, and extend far-future searches from their explicit start. (#1280, #1298) — thanks @remote-controlled-man and @privatenumber.
+
+- Gmail: treat a whitespace-only `text/plain` part as missing when choosing a message body, so `gmail get`, `gmail thread get` and `--sanitize-content` output fall back to the HTML part instead of returning an empty body (seen in Meetup notifications). (#1279) — thanks @Flamefork.
+
 - Release: require SSH-signed annotated tags authorized by the committed signer policy before builds and publication; preserve tagless dry runs.
 
 - CI: run CodeQL weekly and on pull requests or manual dispatch, retaining Actions, Go, and JavaScript analysis without duplicate scans on every main push.
 
 - Dependencies: refresh MCP, Google API/gRPC and networking libraries plus tracking-worker tooling; retain the documented Go minimum, patched build toolchain, release cooldown, and security overrides. (#1274)
 
+- Dependencies: refresh Google clients, MCP, Kong, Markdown/YAML libraries, and tracking-worker tools; update the workerd security pin while retaining Go 1.26, the patched build toolchain, and the 24-hour worker cooldown. (#1302)
+
 - Gmail: add `--ids-only` to `gmail messages search` and `gmail search` to return IDs from the list call without one detail request per result, for bulk jobs that pipe into `gmail batch modify`. (#1257) — thanks @jatinbansal1998.
+
+- Gmail: add `watch serve --token-env` and `--hook-token-env` to read tokens from named environment variables, preserving literal flags and stored-hook defaults. (#1292) — thanks @mmaps.
 
 - Google APIs: raise the rate-limit retry budget from three to six backoffs (63s to just under 94.5s in total) so per-minute quotas such as Gmail's "Units per minute per user" can refill before a command fails. (#1257) — thanks @jatinbansal1998.
 
 - Calendar: honor explicitly empty event summaries, locations, and attendee lists in update requests, while preserving omitted fields. (#1268) — thanks @pkyIntelligence.
 
+- Calendar: accept `primary` and unlisted email-like IDs in `--cal` and `--calendars` while retaining named-calendar resolution. (#1283, #1297) — thanks @goutamadwant.
+
+- Calendar: reject a single page token across multiple calendars before fetching events; retain single-calendar continuation and `--all-pages`. (#1281, #1285) — thanks @goutamadwant.
+
+- Calendar: sort all-day events in their calendar timezone, including partial responses and display-timezone overrides. (#1284, #1286) — thanks @goutamadwant.
+
+- Calendar: include camelCase `calendarId` on multi-calendar JSON events while retaining the existing `CalendarID` key for scripts. (#1282, #1290) — thanks @i098.
+
 - MCP: add optional `page` continuation tokens to `gmail_search` and `calendar_events`, preserving bounded reads and existing CLI pagination. (#1269, #1270) — thanks @pkyIntelligence.
+
+- Docs: preserve API 404 causes so missing documents exit with the documented `not_found` code 5 while keeping the existing error message. (#1288, #1289) — thanks @HardMax71.
 
 ## 0.47.1 - 2026-10-26
 

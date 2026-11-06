@@ -42,7 +42,9 @@ This writes `client_domains` into `config.json` so any `@example.com` account se
 
 Command errors, per-item results, backup diagnostics, `auth list --check`, `auth doctor --check`, and watch/verbose error logs omit OAuth provider descriptions, URLs, and response bodies. Recognized errors retain their code and recovery steps. For `invalid_grant`, reauthorize the same account and client with `gog --client <client> auth add <email>`, preserving the services and scopes shown by `gog auth list --json`.
 
-Automatic reauthorization preserves stored scope selections. Limited Gmail,
+Automatic reauthorization keeps the command runtime and OAuth client dependencies
+when recovering from an expired or revoked token, so it can open the authorization
+flow and retry the original request. It preserves stored scope selections. Limited Gmail,
 Calendar read-only, and Photos read-only grants omit incremental authorization
 so Google does not add permissions from an earlier, broader grant. A Calendar
 read-only grant remains narrowed when combined with extra event-write scopes;
@@ -124,6 +126,29 @@ Workspace admin identity you want to impersonate:
 gog auth service-account set admin@example.com --key ~/Downloads/service-account.json
 gog auth service-account status admin@example.com
 ```
+
+File storage remains the default, and existing service-account key files keep
+working. To migrate a configured account to the keyring, pass its original JSON
+key file (or the currently stored key file) and add `--keyring`:
+
+```bash
+gog auth service-account set admin@example.com --key ~/Downloads/service-account.json --keyring
+gog auth service-account status admin@example.com
+```
+
+This uses the same configured keyring backend as OAuth secrets. The managed
+service-account file becomes a reference; the key itself goes into the keyring.
+The generic legacy managed key file is removed after the reference is saved.
+Unmanaged input files and separately configured Keep-specific key files are left
+untouched. Secure or remove those copies yourself after verifying the migration.
+Keyring access is required whenever the account is used, including by Keep.
+
+To return to file storage, run `set` with the original JSON key and omit
+`--keyring`. This also removes the old keyring entry. `unset` removes the managed
+reference and its keyring entry. Before using an older gog version or moving to
+another machine, restore file storage or provide the original key again; copying
+a reference file alone does not migrate its keyring entry. Keep a secure recovery
+copy of the original key until the migration is verified.
 
 Cloud Identity Groups commands use the same Workspace service-account setup.
 Include `https://www.googleapis.com/auth/cloud-identity.groups.readonly` in
