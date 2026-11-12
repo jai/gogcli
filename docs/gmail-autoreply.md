@@ -13,14 +13,14 @@ Use it on a schedule with `launchd`, cron, or another runner when Gmail's native
 
 ## Example
 
-Reply once to mail sent to `security@openclaw.ai`, add a dedupe label, then archive:
+Reply once to mail sent to `security@example.com`, add a dedupe label, then archive:
 
-Replace `bot@example.com` with the authenticated Google account that receives
-mail sent to `security@openclaw.ai`.
+Replace `bot@example.com` with your authenticated Google account and
+`security@example.com` with the recipient address to match.
 
 ```bash
 gog -a bot@example.com gmail autoreply \
-  'to:security@openclaw.ai in:inbox -label:SecurityAutoReplied' \
+  'to:security@example.com in:inbox -label:SecurityAutoReplied' \
   --body-file ./security-autoreply.txt \
   --label SecurityAutoReplied \
   --archive \
