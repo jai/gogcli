@@ -10,6 +10,8 @@
 
 - Chat: add full SDK message output for list/search, get with markup selection, text-only update/edit, and confirmed delete with explicit reply deletion; preserve compact defaults and wrap nested rich content for agents. (jai/gogcli#1) — thanks @jai.
 
+- Docs: use placeholder accounts in Gmail auto-reply, Drive audit, and live-testing examples. (#1332) — thanks @vyctorbrzezowski.
+
 ## 0.48.0 - 2026-11-05
 
 **Highlights:** New backups stay local until you configure a remote; existing configurations keep working. Store service-account keys in the keyring, search Gmail IDs efficiently, and use environment-backed watch tokens, with Calendar fixes and security dependency updates.
