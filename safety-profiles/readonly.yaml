@@ -83,6 +83,7 @@ calendar:
   out-of-office: false
   working-location: false
   create-calendar: false
+  update-calendar: false
 
 drive:
   ls: true
@@ -252,6 +253,9 @@ chat:
     create: false
   messages:
     list: true
+    get: true
+    update: false
+    delete: false
     send: false
     react: false
     reactions: false

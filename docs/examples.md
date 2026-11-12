@@ -30,8 +30,15 @@ permanent deletion is intentional.
 See the [`gog calendar`](commands/gog-calendar.md) reference and
 [Zoom setup](zoom-auth-setup.md).
 
+Calendar selectors accept names, `primary`, and calendar email IDs. A `--page`
+(or `--cursor`) token belongs to one calendar; use `--all-pages` when reading
+several calendars. Time sorting interprets all-day dates in the calendar’s
+timezone, independently of a display `--timezone` override. Multi-calendar JSON
+includes `calendarId` and retains `CalendarID` for existing scripts.
+
 ```bash
 gog calendar events --today
+gog calendar events --cal primary --cal colleague@example.com --all-pages --sort start
 gog calendar create --summary "Review" \
   --from "2026-05-06T10:00:00+02:00" \
   --to "2026-05-06T10:30:00+02:00"
@@ -43,6 +50,7 @@ gog calendar update primary <eventId> --with-meet
 gog calendar update primary <eventId> \
   --attachment 'https://drive.google.com/open?id=<fileId>'
 gog calendar update primary <eventId> --attachment ''
+gog calendar update primary <eventId> --location '' --attendees ''
 gog zoom auth setup
 gog calendar create primary --summary "Client sync" \
   --from "2026-05-06T11:00:00+02:00" \
@@ -50,14 +58,32 @@ gog calendar create primary --summary "Client sync" \
   --with-zoom
 gog calendar move primary <eventId> team-calendar@example.com
 gog calendar create-calendar "Project calendar" --timezone Europe/London
+gog calendar update-calendar <calendarId> --timezone America/Los_Angeles
+gog calendar update-calendar <calendarId> --check
 gog calendar delete-calendar <calendarId> --force
 gog calendar subscribe en.uk#holiday@group.v.calendar.google.com
 gog calendar unsubscribe en.uk#holiday@group.v.calendar.google.com --force
 ```
 
+For event updates, an empty `--summary`, `--description`, or `--location` clears
+that field, and `--attendees ''` removes all attendees. Omitted fields stay unchanged.
+
 Repeated `--attachment` values replace all attachments; an empty value clears
 them. Google Calendar appointment schedules are not exposed by the Calendar
 API, so `gog` cannot list or manage them.
+
+A calendar's own default timezone (`calendars.get.timeZone`, owner-only)
+decides the UTC offset the API serialises for every event on it, so a stale
+default makes events report a `dateTime` offset that contradicts their own
+`timeZone`. `gog calendar update-calendar` patches the calendar resource, and
+`--check` reports its timezone next to your read-only calendar-list copy
+without writing anything.
+
+Calendar setting updates require a nonempty name and a valid timezone when those
+fields are supplied. Omit a flag to preserve its field; use `--description ''`
+or `--location ''` to clear those optional fields. `--dry-run --json` previews the
+exact patch without authentication or API requests; `--check` is a separate
+read-only inspection and cannot be combined with setting flags.
 
 ## Drive
 
@@ -72,7 +98,7 @@ gog drive tree --parent <folderId> --depth 2
 gog drive du --parent <folderId> --max 20 --json
 gog drive inventory --parent <folderId> --json
 gog drive audit sharing --parent <folderId> --internal-domain example.com --json
-gog drive audit user clawdbot@gmail.com --parent <folderId> --json
+gog drive audit user user@example.com --parent <folderId> --json
 gog drive bulk remove-public --parent <folderId> --dry-run
 gog drive share <fileId> --to user --email person@example.com --notify --dry-run
 gog drive labels list --json

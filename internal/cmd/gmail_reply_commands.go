@@ -37,6 +37,7 @@ type GmailReplyOptions struct {
 	From                    string   `name:"from" help:"Send from this email address (must be a verified send-as alias)"`
 	AutoFromAddressedAlias  bool     `name:"auto-from-addressed-alias" help:"When --from is omitted, reply from the verified send-as alias addressed by the original message" env:"GOG_GMAIL_AUTO_FROM_ADDRESSED_ALIAS"`
 	composeSignatureOptions `embed:""`
+	composeTextHTMLOptions  `embed:""`
 }
 
 func (c *GmailReplyCmd) Run(ctx context.Context, flags *RootFlags) error {
@@ -146,6 +147,7 @@ func (c *GmailReplyOptions) resolveReplyInputs(ctx context.Context, messageID st
 	if err != nil {
 		return replyComposeInputs{}, err
 	}
+	htmlBody = c.withTextHTML(body, htmlBody)
 	if strings.TrimSpace(body) == "" && strings.TrimSpace(htmlBody) == "" {
 		return replyComposeInputs{}, usage("required: --body, --body-file, --body-html, or --body-html-file")
 	}
@@ -184,7 +186,7 @@ func (c *GmailReplyOptions) resolveReplyInputs(ctx context.Context, messageID st
 // builds the reply recipients and body, and returns the message without sending
 // so the caller controls how it is dispatched.
 func (c *GmailReplyOptions) buildReplyComposeMessage(ctx context.Context, svc *gmail.Service, account string, inputs replyComposeInputs, replyAll bool) (replyComposeMessage, error) {
-	body, htmlBody := inputs.body, inputs.htmlBody
+	body, htmlBody := inputs.body, directedHTML(inputs.htmlBody)
 
 	sendAs, sendAsErr := listSendAs(ctx, svc)
 	from, err := resolveComposeFrom(ctx, svc, account, c.From, sendAs, sendAsErr)

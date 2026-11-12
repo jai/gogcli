@@ -2,7 +2,7 @@
 
 Every `gog` command has a generated docs page. The source of truth is the live CLI schema; run `make docs-commands` after changing command names, flags, help text, aliases, or arguments.
 
-Generated pages: 779.
+Generated pages: 784.
 
 ## Top-level Commands
 
@@ -144,6 +144,7 @@ Generated pages: 779.
     - [gog auth keyring](gog-auth-keyring.md) - Configure keyring backend
     - [gog auth list](gog-auth-list.md) - List stored accounts
     - [gog auth manage](gog-auth-manage.md) - Open interactive accounts manager in browser
+    - [gog auth rekey](gog-auth-rekey.md) - Write a verified copy of the file keyring to <outdir> using GOG_KEYRING_NEW_PASSWORD; leave the live keyring untouched
     - [gog auth remove](gog-auth-remove.md) - Remove a stored refresh token
     - [gog auth service-account](gog-auth-service-account.md) - Configure service account (Workspace only; domain-wide delegation)
       - [gog auth service-account set](gog-auth-service-account-set.md) - Store a service account key for impersonation
@@ -202,6 +203,7 @@ Generated pages: 779.
     - [gog calendar time](gog-calendar-time.md) - Show server time
     - [gog calendar unsubscribe](gog-calendar-unsubscribe.md) - Remove a calendar from your calendar list
     - [gog calendar update](gog-calendar-update.md) - Update an event
+    - [gog calendar update-calendar](gog-calendar-update-calendar.md) - Update calendar-level settings (summary, description, location, timezone)
     - [gog calendar users](gog-calendar-users.md) - List workspace users (use their email as calendar ID)
     - [gog calendar working-location](gog-calendar-working-location.md) - Set working location (home/office/custom)
   - [gog chat](gog-chat.md) - Google Chat
@@ -209,6 +211,8 @@ Generated pages: 779.
       - [gog chat dm send](gog-chat-dm-send.md) - Send a direct message
       - [gog chat dm space](gog-chat-dm-space.md) - Find or create a DM space
     - [gog chat messages](gog-chat-messages.md) - Chat messages
+      - [gog chat messages delete](gog-chat-messages-delete.md) - Delete a message
+      - [gog chat messages get](gog-chat-messages-get.md) - Get a full message
       - [gog chat messages list](gog-chat-messages-list.md) - List messages
       - [gog chat messages react](gog-chat-messages-react.md) - Add an emoji reaction to a message
       - [gog chat messages reactions](gog-chat-messages-reactions.md) - Manage emoji reactions on a message
@@ -217,6 +221,7 @@ Generated pages: 779.
         - [gog chat messages reactions list](gog-chat-messages-reactions-list.md) - List reactions on a message
       - [gog chat messages search](gog-chat-messages-search.md) - Search messages across Chat
       - [gog chat messages send](gog-chat-messages-send.md) - Send a message
+      - [gog chat messages update](gog-chat-messages-update.md) - Replace message text
     - [gog chat spaces](gog-chat-spaces.md) - Chat spaces
       - [gog chat spaces create](gog-chat-spaces-create.md) - Create a space
       - [gog chat spaces find](gog-chat-spaces-find.md) - Find spaces by display name

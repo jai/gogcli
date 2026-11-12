@@ -16,6 +16,8 @@ DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS := -X github.com/openclaw/gogcli/internal/cmd.version=$(VERSION) -X github.com/openclaw/gogcli/internal/cmd.commit=$(COMMIT) -X github.com/openclaw/gogcli/internal/cmd.date=$(DATE)
 # `make lint` already covers vet-equivalent checks; skip duplicate work in `make test`.
 GO_TEST_FLAGS ?= -vet=off
+# The command package's complete suite can exceed Go's default ten-minute limit.
+GO_TEST_TIMEOUT ?= 20m
 TEST_FLAGS ?=
 TEST_PKGS ?= ./...
 
@@ -25,7 +27,7 @@ GOIMPORTS := $(TOOLS_DIR)/goimports
 GOLANGCI_LINT := $(TOOLS_DIR)/golangci-lint
 DEADCODE := $(TOOLS_DIR)/deadcode
 TOOLS_STAMP := $(TOOLS_DIR)/.versions
-TOOLS_VERSION := gofumpt=v0.12.0;goimports=v0.52.0;golangci-lint=v2.14.0;deadcode=v0.52.0
+TOOLS_VERSION := gofumpt=v0.12.0;goimports=v0.52.0;golangci-lint=v2.15.0;deadcode=v0.52.0
 
 # Allow passing CLI args as extra "targets":
 #   make gogcli -- --help
@@ -92,7 +94,7 @@ tools:
 		set -e; \
 		GOBIN=$(TOOLS_DIR) go install mvdan.cc/gofumpt@v0.12.0; \
 		GOBIN=$(TOOLS_DIR) go install golang.org/x/tools/cmd/goimports@v0.52.0; \
-		GOBIN=$(TOOLS_DIR) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0; \
+		GOBIN=$(TOOLS_DIR) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0; \
 		GOBIN=$(TOOLS_DIR) go install golang.org/x/tools/cmd/deadcode@v0.52.0; \
 		printf '%s\n' "$(TOOLS_VERSION)" > "$(TOOLS_STAMP)"; \
 	fi
@@ -141,7 +143,7 @@ docker-version-check:
 	fi
 
 test:
-	@go test $(GO_TEST_FLAGS) $(TEST_FLAGS) $(TEST_PKGS)
+	@go test -timeout=$(GO_TEST_TIMEOUT) $(GO_TEST_FLAGS) $(TEST_FLAGS) $(TEST_PKGS)
 	@node --test scripts/eval-gws.test.mjs scripts/eval-gws-agents.test.mjs scripts/check-docker-go-version.test.mjs
 
 eval-gws: build

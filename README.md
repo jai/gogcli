@@ -57,6 +57,8 @@ gog auth doctor --check
 gog gmail search 'newer_than:7d' --max 10
 ```
 
+`gog auth you@gmail.com` is shorthand for `gog auth add you@gmail.com`, with the same flags.
+
 For Gmail queries beginning with `-`, place all flags before `--`; see
 [Search and Read](docs/gmail-workflows.md#search-and-read).
 
@@ -85,10 +87,41 @@ Generic API commands support service-hosted Discovery documents such as Meet v2
 when the default central Directory returns 404. Explicit
 `GOG_DISCOVERY_BASE_URL` overrides retain their existing behavior.
 
+`GOG_GOOGLE_API_BASE_URL=http(s)://host[:port]` sends Google API requests for
+`https://googleapis.com` and `https://*.googleapis.com` to a test server,
+emulator, proxy, or relay that adds credentials outside gog. Path and query are
+kept and the original host is sent as `X-Forwarded-Host`. While it is set, gog
+attaches no credentials to Google API requests (no OAuth, ADC, service-account,
+`--access-token`, or API-key credentials), does not need stored tokens, and
+refuses cross-origin redirects, so the relay handles any upstream redirects.
+`--account` still selects the account label. Use https for endpoints that are
+not on loopback.
+Discovery documents still use `GOG_DISCOVERY_BASE_URL`; gRPC clients such as
+the Pub/Sub pull used by `gmail watch pull`, Maps/Places API-key calls, and
+downloads from non-googleapis.com URLs are not redirected, and `gog auth` commands
+still talk to Google directly. Invalid values fail
+with a usage error.
+
 Consumer Google accounts work with user-facing APIs. Admin Directory, Cloud
 Identity Groups, Chat, Keep, and domain-wide delegation require a managed
 Google Workspace domain. The [Workspace Admin guide](docs/workspace-admin.md)
 explains that setup.
+
+## Chat messages
+
+```bash
+gog --account you@example.com chat messages list spaces/AAA --full --json --wrap-untrusted
+gog --account you@example.com chat messages search 'release' --full --view full --json
+gog --account you@example.com chat messages get spaces/AAA/messages/BBB --json
+gog chat messages update spaces/AAA/messages/BBB --text='Replacement' --dry-run --json
+gog chat messages delete spaces/AAA/messages/BBB --delete-replies --dry-run --json
+```
+
+Compact list/search defaults are preserved. Full output is SDK-typed JSON,
+including rich content and image URLs; it does not download image bytes.
+See [Chat rich messages](docs/chat-rich-messages.md) for output contracts,
+permissions, safe text edits, and the distinction between CLI `--force` and
+API reply deletion.
 
 ## Automate safely
 
@@ -151,6 +184,11 @@ The generated table below records the user OAuth and Workspace service-account
 surface. `gog auth services` reports the same information from the installed
 binary.
 
+The default `user`/`all-user` set excludes `ads`. Google treats authorizing an
+app for Google Ads as a sensitive action and can block consent behind a
+mandatory passkey enrollment. Add it only when you need it:
+`gog auth add you@example.com --services user,ads`.
+
 <!-- auth-services:start -->
 | Service | User | APIs | Scopes | Notes |
 | --- | --- | --- | --- | --- |
@@ -174,7 +212,7 @@ binary.
 | analytics | yes | Analytics Admin API, Analytics Data API | `https://www.googleapis.com/auth/analytics.readonly` | GA4 account summaries + reporting |
 | searchconsole | yes | Search Console API | `https://www.googleapis.com/auth/webmasters` | Search Analytics + sitemap management + URL Inspection |
 | adsense | no | AdSense Management API | `https://www.googleapis.com/auth/adsense.readonly` | Consumer OAuth; explicit opt-in with --services adsense; read-only |
-| ads | yes | Google Ads API | `https://www.googleapis.com/auth/adwords` | OAuth scope only |
+| ads | no | Google Ads API | `https://www.googleapis.com/auth/adwords` | Explicit opt-in with --services ads; Google may require a passkey to authorize Google Ads access |
 | groups | no | Cloud Identity API | `https://www.googleapis.com/auth/cloud-identity.groups.readonly` | Workspace only |
 | keep | no | Keep API | `https://www.googleapis.com/auth/keep` | Workspace only; service account (domain-wide delegation) |
 | admin | no | Admin SDK Directory API | `https://www.googleapis.com/auth/admin.directory.user`<br>`https://www.googleapis.com/auth/admin.directory.group`<br>`https://www.googleapis.com/auth/admin.directory.group.member` | Workspace only; service account with domain-wide delegation required |
@@ -184,6 +222,12 @@ binary.
 <!-- auth-services:end -->
 
 ## Documentation
+
+`gog drive get <fileId> --fields id,trashed --json` preserves `"trashed": false`.
+The default metadata also includes false `starred` and `hasThumbnail` values.
+Conditionally absent fields (`shared`, `ownedByMe`, `writersCanShare`, and
+`hasAugmentedPermissions`) and nested booleans retain the SDK's omission behavior;
+use `gog drive raw` when you need the exact API response.
 
 - [Overview and guides](https://gogcli.sh/)
 - [Examples](docs/examples.md)

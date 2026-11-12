@@ -33,17 +33,19 @@ func newCalendarServiceFromZoomTestServer(t *testing.T, ctx context.Context, srv
 }
 
 type fakeZoomCalendarClient struct {
-	created   int
-	deleted   []string
-	err       error
-	deleteErr error
+	created         int
+	deleted         []string
+	err             error
+	deleteErr       error
+	meetingRequests []zoom.CreateMeetingRequest
 }
 
-func (f *fakeZoomCalendarClient) CreateMeeting(context.Context, string, zoom.CreateMeetingRequest) (*zoom.Meeting, error) {
+func (f *fakeZoomCalendarClient) CreateMeeting(_ context.Context, _ string, request zoom.CreateMeetingRequest) (*zoom.Meeting, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
 	f.created++
+	f.meetingRequests = append(f.meetingRequests, request)
 	return &zoom.Meeting{
 		ID:       int64(1000 + f.created),
 		JoinURL:  "https://example.zoom.us/j/1001?pwd=secret",
@@ -566,6 +568,49 @@ func TestMergeEventPatchHonorsExplicitEmptyDescription(t *testing.T) {
 	}
 	if got.Summary != "Planning" {
 		t.Fatalf("mergeEventPatch summary = %q, want existing summary", got.Summary)
+	}
+}
+
+func TestCalendarUpdateZoomSummaryClear(t *testing.T) {
+	for _, flag := range []string{"--with-zoom", "--regenerate-zoom"} {
+		for _, clearSummary := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/clear=%t", flag, clearSummary), func(t *testing.T) {
+				client := &fakeZoomCalendarClient{}
+				var patched map[string]json.RawMessage
+				srv := httptest.NewServer(withPrimaryCalendar(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.Method == http.MethodGet {
+						_ = json.NewEncoder(w).Encode(&calendar.Event{Id: "ev", Summary: "Existing"})
+						return
+					}
+					if r.Method == http.MethodPatch {
+						if err := json.NewDecoder(r.Body).Decode(&patched); err != nil {
+							t.Error(err)
+						}
+						_ = json.NewEncoder(w).Encode(map[string]string{"id": "ev"})
+						return
+					}
+					http.NotFound(w, r)
+				})))
+				defer srv.Close()
+				args := []string{"fixture@example.invalid", "ev", flag}
+				wantTopic := "Existing"
+				if clearSummary {
+					args = append(args, "--summary=")
+					wantTopic = ""
+				}
+				svc := newCalendarServiceFromZoomTestServer(t, t.Context(), srv)
+				ctx := newZoomCalendarTestJSONContext(t, svc, client)
+				if err := runKong(t, &CalendarUpdateCmd{}, args, ctx, &RootFlags{Account: "fixture@example.invalid"}); err != nil {
+					t.Fatal(err)
+				}
+				if len(client.meetingRequests) != 1 || client.meetingRequests[0].Topic != wantTopic {
+					t.Fatalf("Zoom request did not preserve summary intent: %+v", client.meetingRequests)
+				}
+				if clearSummary && string(patched["summary"]) != `""` || !clearSummary && patched["summary"] != nil {
+					t.Fatalf("Calendar PATCH did not preserve summary intent: %s", patched["summary"])
+				}
+			})
+		}
 	}
 }
 

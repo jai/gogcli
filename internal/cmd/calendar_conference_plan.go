@@ -86,7 +86,7 @@ func mergeEventPatch(existing, patch *calendar.Event) *calendar.Event {
 	if patch == nil {
 		return &merged
 	}
-	if strings.TrimSpace(patch.Summary) != "" {
+	if strings.TrimSpace(patch.Summary) != "" || forceSendsField(patch, "Summary") {
 		merged.Summary = patch.Summary
 	}
 	if strings.TrimSpace(patch.Description) != "" || forceSendsField(patch, "Description") {

@@ -4,9 +4,9 @@ summary: "Unified GitHub Actions release process for GogCLI"
 
 # Releasing `gogcli`
 
-Official releases run only through `.github/workflows/release-unified.yml`, which calls the fleet-standard `openclaw/release-workflows` Go CLI pipeline at `@v1`. Do not create or push release tags locally, and do not use local signing or notarization credentials.
+Official releases run only through `.github/workflows/release-unified.yml`, which calls the fleet-standard `openclaw/release-workflows` Go CLI pipeline at `@v1`. Binary signing, notarization, and publication stay in Actions. After a successful dry run, create and verify the release tag with an SSH key listed in `.github/release-allowed-signers` before dispatching publication.
 
-Release authorization is repository Actions write access combined with a protected, required-check-green `main` commit and the organization-scoped signing, notarization, and tap credentials. The shared workflow creates the immutable annotated tag; GogCLI intentionally has no separate local tag-signer authorization step.
+Release authorization is repository Actions write access combined with a protected, required-check-green `main` commit and the organization-scoped signing, notarization, and tap credentials. The caller enables `require-signed-tag`, so the shared workflow requires an existing SSH-signed annotated tag and verifies its target and signature before building and again before publication. The committed `.github/release-allowed-signers` policy authorizes the listed keys for Peter and Vincent; a local default signing key is eligible only if it is listed there. Create the tag manually at the frozen release commit and verify it against that committed policy before pushing. Never move or replace a release tag, and do not substitute a local allowlist.
 
 ## Prepare the release
 
@@ -15,9 +15,9 @@ Release authorization is repository Actions write access combined with a protect
 3. Set `internal/cmd/VERSION` to `vX.Y.Z`.
 4. Run `make ci`, review the complete diff, and land it on protected `main` with required checks green.
 
-The workflow first runs a read-only `xcrun notarytool history` preflight. The Darwin build pins `MACOSX_DEPLOYMENT_TARGET=15.0` and checks every binary slice with `otool` before signing or publication.
+The workflow first runs a read-only `xcrun notarytool history` preflight on the `xcode-27` runner. The Darwin CI and release builds pin `MACOSX_DEPLOYMENT_TARGET=15.0`, include `-mmacosx-version-min=15.0` in the cgo compiler/linker flags so cached objects use the same target, and check every binary slice with `otool` before signing or publication.
 
-The workflow freezes the protected `main` commit, creates or reuses its immutable annotated version tag, builds from that commit, signs and notarizes the native Darwin binaries with organization secrets, verifies the complete asset inventory independently on arm64 and Intel runners, publishes the GitHub Release, and updates `openclaw/homebrew-tap/Formula/gogcli.rb` from verifier-bound asset hashes.
+The workflow freezes the protected `main` commit, verifies and reuses its existing signed annotated version tag, builds from that commit, signs and notarizes the native Darwin binaries with organization secrets, verifies the complete asset inventory independently for arm64 and x86_64 (running Intel binaries under Rosetta on Apple Silicon), publishes the GitHub Release, and updates `openclaw/homebrew-tap/Formula/gogcli.rb` from verifier-bound asset hashes.
 
 The caller preserves GogCLI's public artifact contract where applicable:
 
@@ -30,7 +30,7 @@ The caller preserves GogCLI's public artifact contract where applicable:
 
 ## Dispatch
 
-From current protected `main`, dispatch the workflow with a SemVer version without a leading `v`:
+First run the dry run described below on the protected release-prep merge commit. Once it succeeds, create the SSH-signed annotated `vX.Y.Z` tag with an allowed key at that exact commit, verify it, and push it. From current protected `main`, dispatch the workflow with a SemVer version without a leading `v`:
 
 ```sh
 gh workflow run release-unified.yml \
@@ -51,7 +51,7 @@ exact version match without the development suffix.
 
 ## Docker closeout
 
-After the GitHub Release is public and its tag is verified, publish the Docker image separately unless an exact-tag Docker run has already succeeded. The unified workflow creates the tag with `GITHUB_TOKEN`, which does not trigger Docker's tag-push workflow.
+After the GitHub Release is public and its tag is verified, publish the Docker image separately unless an exact-tag Docker run has already succeeded. A signed tag pushed by the release operator normally triggers Docker's tag-push workflow; tags created with `GITHUB_TOKEN` do not.
 
 ```sh
 gh workflow run docker.yml \
