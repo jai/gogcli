@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/alecthomas/kong"
+	"golang.org/x/oauth2"
 
 	"github.com/openclaw/gogcli/internal/app"
 	"github.com/openclaw/gogcli/internal/authclient"
@@ -21,6 +22,7 @@ import (
 	"github.com/openclaw/gogcli/internal/secrets"
 	"github.com/openclaw/gogcli/internal/termutil"
 	"github.com/openclaw/gogcli/internal/ui"
+	"github.com/openclaw/gogcli/internal/zoom"
 )
 
 const (
@@ -158,6 +160,7 @@ func executeWithRuntime(args []string, runtime *app.Runtime) (err error) {
 	}
 	args = rewriteDocsCellUpdateContentArgs(parser.Model, args)
 	args = rewriteDesirePathArgs(parser.Model, args)
+	args = rewriteAuthEmailArgs(parser.Model, args)
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -234,7 +237,8 @@ func executeWithRuntime(args []string, runtime *app.Runtime) (err error) {
 	}
 	previousLogger := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(runtimeIO.Err, &slog.HandlerOptions{
-		Level: logLevel,
+		Level:       logLevel,
+		ReplaceAttr: formatLogError,
 	})))
 	defer slog.SetDefault(previousLogger)
 
@@ -288,25 +292,6 @@ func executeWithRuntime(args []string, runtime *app.Runtime) (err error) {
 		return resolveRuntimeClient(runtime, email, override)
 	}
 
-	// reauthFn is the auto-reauth closure called when the stored refresh
-	// token is expired or revoked (invalid_grant). It launches a browser-
-	// based OAuth flow and persists the new token, mirroring `gog auth add`.
-	reauthFn := func(ctx context.Context, email string, client string, services []string, scopes []string, storedToken *secrets.Token) (secrets.Token, error) {
-		opts := googleauth.ReauthOptions{
-			Email:                email,
-			Client:               client,
-			Services:             services,
-			Scopes:               scopes,
-			StoredToken:          storedToken,
-			EnsureKeychainAccess: ensureKeychainAccessIfNeeded,
-			AuthorizeFunc:        authorizeGoogleAccount,
-			FetchIdentityFunc:    fetchAuthIdentity,
-			Confirm:              confirmReauthorization,
-			Stderr:               runtimeIO.Err,
-		}
-		return googleauth.Reauth(ctx, opts)
-	}
-
 	authDependencies := googleapi.AuthDependencies{
 		ResolveClient:             resolveClient,
 		ReadCredentials:           readCredentials,
@@ -316,9 +301,9 @@ func executeWithRuntime(args []string, runtime *app.Runtime) (err error) {
 		Mode:                      cli.authMode,
 		ADCTokenSource:            googleapi.DefaultADCTokenSource,
 		ServiceAccountTokenSource: googleapi.DefaultServiceAccountTokenSource,
-		Reauth:                    reauthFn,
 		ReauthCoordinator:         googleapi.NewReauthCoordinator(),
 	}
+	authDependencies.Reauth = commandReauthorizer(runtime, authDependencies)
 	ctx = googleapi.WithAuthDependencies(ctx, authDependencies)
 	composeRuntimeGoogleServices(runtime, googleapi.NewFactory(authDependencies, googleapi.FactoryOptions{
 		PhotosBaseURL:       os.Getenv("GOG_PHOTOS_BASE_URL"),
@@ -343,6 +328,10 @@ func executeWithRuntime(args []string, runtime *app.Runtime) (err error) {
 	ctx = authclient.WithClient(ctx, cli.Client)
 	ctx = authclient.WithAccessToken(ctx, directAccessToken(&cli.RootFlags))
 	ctx = authclient.WithQuotaProject(ctx, cli.QuotaProject)
+	ctx, err = googleapi.WithAPIBaseURL(ctx, os.Getenv("GOG_GOOGLE_API_BASE_URL"))
+	if err != nil {
+		return reportEarlyError(kctx, runtimeIO.Err, newUsageError(err))
+	}
 
 	uiColor := cli.Color
 	if outfmt.IsJSON(ctx) || outfmt.IsPlain(ctx) {
@@ -474,6 +463,14 @@ func applyExplicitOutputModePrecedence(kctx *kong.Context, flags *RootFlags) err
 		flags.JSON = false
 	}
 	return nil
+}
+
+func formatLogError(_ []string, attr slog.Attr) slog.Attr {
+	var retrieveErr *oauth2.RetrieveError
+	if logErr, ok := attr.Value.Any().(error); ok && (errors.As(logErr, &retrieveErr) || errors.Is(logErr, zoom.ErrZoomTokenRequestFailed)) {
+		return slog.String(attr.Key, errfmt.Format(logErr))
+	}
+	return attr
 }
 
 func reportEarlyError(kctx *kong.Context, w io.Writer, err error) error {

@@ -13,11 +13,14 @@ Use it on a schedule with `launchd`, cron, or another runner when Gmail's native
 
 ## Example
 
-Reply once to mail sent to `security@openclaw.ai`, add a dedupe label, then archive:
+Reply once to mail sent to `security@example.com`, add a dedupe label, then archive:
+
+Replace `bot@example.com` with your authenticated Google account and
+`security@example.com` with the recipient address to match.
 
 ```bash
-gog -a clawdbot@gmail.com gmail autoreply \
-  'to:security@openclaw.ai in:inbox -label:SecurityAutoReplied' \
+gog -a bot@example.com gmail autoreply \
+  'to:security@example.com in:inbox -label:SecurityAutoReplied' \
   --body-file ./security-autoreply.txt \
   --label SecurityAutoReplied \
   --archive \
@@ -41,3 +44,5 @@ If you cannot use GitHub or are unsure which repo is affected, reply to this ema
 - It sends replies in-thread with `In-Reply-To` and `References`.
 - It adds `Auto-Submitted: auto-replied` and suppresses common auto-response loops.
 - By default it skips bulk/list/auto-generated mail.
+- It also skips mail from your account or any send-as alias, even if the message has an external `Reply-To`. Use `--allow-self` to allow those replies.
+- Without `--allow-self`, a failed send-as lookup stops the run before searching or sending, so an unavailable alias list cannot cause replies to your own addresses.

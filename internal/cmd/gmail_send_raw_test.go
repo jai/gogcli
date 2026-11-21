@@ -227,6 +227,7 @@ func TestGmailSendRawRejectsEveryComposeMode(t *testing.T) {
 		{BodyFile: "body.txt"},
 		{BodyHTML: "<b>x</b>"},
 		{BodyHTMLFile: "body.html"},
+		{composeTextHTMLOptions: composeTextHTMLOptions{HTMLFromText: true}},
 		{ReplyToMessageID: "m"},
 		{ReplyAll: true},
 		{ReplyTo: "a@example.com"},

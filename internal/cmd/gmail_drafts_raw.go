@@ -53,6 +53,7 @@ func (c *GmailDraftsCreateCmd) rawModeConflict() string {
 		ReplyToMessageID: c.ReplyToMessageID, ReplyAll: c.ReplyAll, ReplyTo: c.ReplyTo,
 		Attach: c.Attach, From: c.From, Quote: c.Quote,
 		composeSignatureOptions: c.composeSignatureOptions,
+		composeTextHTMLOptions:  c.composeTextHTMLOptions,
 	}
 	return compose.rawModeConflict()
 }
@@ -73,6 +74,7 @@ func (c *GmailDraftsUpdateCmd) rawModeConflict() string {
 		ReplyToMessageID: c.ReplyToMessageID, ReplyAll: c.ReplyAll, ReplyTo: c.ReplyTo,
 		Attach: c.Attach, From: c.From, Quote: c.Quote, AutoFromAddressedAlias: c.AutoFromAddressedAlias,
 		composeSignatureOptions: c.composeSignatureOptions,
+		composeTextHTMLOptions:  c.composeTextHTMLOptions,
 	}
 	return compose.rawModeConflict()
 }

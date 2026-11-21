@@ -90,6 +90,7 @@ Generated from `gog schema --json`.
     - [`gog auth keyring [<backend> [<backend2>]]`](commands/gog-auth-keyring.md) - Configure keyring backend
     - [`gog auth list [flags]`](commands/gog-auth-list.md) - List stored accounts
     - [`gog auth manage (login) [flags]`](commands/gog-auth-manage.md) - Open interactive accounts manager in browser
+    - [`gog auth rekey <outdir> [flags]`](commands/gog-auth-rekey.md) - Write a verified copy of the file keyring to <outdir> using GOG_KEYRING_NEW_PASSWORD; leave the live keyring untouched
     - [`gog auth remove <email>`](commands/gog-auth-remove.md) - Remove a stored refresh token
     - [`gog auth service-account <command>`](commands/gog-auth-service-account.md) - Configure service account (Workspace only; domain-wide delegation)
       - [`gog auth service-account set <email> [flags]`](commands/gog-auth-service-account-set.md) - Store a service account key for impersonation
@@ -148,6 +149,7 @@ Generated from `gog schema --json`.
     - [`gog calendar (cal) time [flags]`](commands/gog-calendar-time.md) - Show server time
     - [`gog calendar (cal) unsubscribe (unsub) <calendarId>`](commands/gog-calendar-unsubscribe.md) - Remove a calendar from your calendar list
     - [`gog calendar (cal) update (edit,set) <calendarId> <eventId> [flags]`](commands/gog-calendar-update.md) - Update an event
+    - [`gog calendar (cal) update-calendar (edit-calendar,set-calendar) <calendarId> [flags]`](commands/gog-calendar-update-calendar.md) - Update calendar-level settings (summary, description, location, timezone)
     - [`gog calendar (cal) users [flags]`](commands/gog-calendar-users.md) - List workspace users (use their email as calendar ID)
     - [`gog calendar (cal) working-location (wl) --from=STRING --to=STRING --type=STRING [<calendarId>] [flags]`](commands/gog-calendar-working-location.md) - Set working location (home/office/custom)
   - [`gog chat <command> [flags]`](commands/gog-chat.md) - Google Chat
@@ -155,6 +157,8 @@ Generated from `gog schema --json`.
       - [`gog chat dm send (create,post) <email> [flags]`](commands/gog-chat-dm-send.md) - Send a direct message
       - [`gog chat dm space (find,setup) <email>`](commands/gog-chat-dm-space.md) - Find or create a DM space
     - [`gog chat messages <command>`](commands/gog-chat-messages.md) - Chat messages
+      - [`gog chat messages delete (rm,remove,del) <message> [flags]`](commands/gog-chat-messages-delete.md) - Delete a message
+      - [`gog chat messages get <message> [flags]`](commands/gog-chat-messages-get.md) - Get a full message
       - [`gog chat messages list (ls) <space> [flags]`](commands/gog-chat-messages-list.md) - List messages
       - [`gog chat messages react <message> <emoji> [flags]`](commands/gog-chat-messages-react.md) - Add an emoji reaction to a message
       - [`gog chat messages reactions (reaction) <command>`](commands/gog-chat-messages-reactions.md) - Manage emoji reactions on a message
@@ -163,6 +167,7 @@ Generated from `gog schema --json`.
         - [`gog chat messages reactions (reaction) list (ls) <message> [flags]`](commands/gog-chat-messages-reactions-list.md) - List reactions on a message
       - [`gog chat messages search (find,query) <query> ... [flags]`](commands/gog-chat-messages-search.md) - Search messages across Chat
       - [`gog chat messages send (create,post) <space> [flags]`](commands/gog-chat-messages-send.md) - Send a message
+      - [`gog chat messages update (edit) <message> [flags]`](commands/gog-chat-messages-update.md) - Replace message text
     - [`gog chat spaces <command>`](commands/gog-chat-spaces.md) - Chat spaces
       - [`gog chat spaces create (add,new) <displayName> [flags]`](commands/gog-chat-spaces-create.md) - Create a space
       - [`gog chat spaces find (search,query) <displayName> [flags]`](commands/gog-chat-spaces-find.md) - Find spaces by display name

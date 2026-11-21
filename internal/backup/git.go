@@ -28,6 +28,11 @@ func ensureRepo(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("backup repo path is required")
 	}
 	if _, err := os.Stat(filepath.Join(cfg.Repo, ".git")); err == nil {
+		if strings.TrimSpace(cfg.Remote) != "" && !HasRemote(ctx, cfg.Repo) {
+			if addErr := git(ctx, cfg.Repo, "remote", "add", "origin", cfg.Remote); addErr != nil {
+				return addErr
+			}
+		}
 		return pullRepo(ctx, cfg.Repo)
 	}
 	if strings.TrimSpace(cfg.Remote) != "" {
@@ -157,9 +162,15 @@ func pullRepo(ctx context.Context, repo string) error {
 	return pullErr
 }
 
+// HasRemote reports whether the repository has an origin without exposing its URL.
+func HasRemote(ctx context.Context, repo string) bool {
+	remote, err := gitOutput(ctx, repo, "remote", "get-url", "origin")
+	return err == nil && strings.TrimSpace(remote) != ""
+}
+
 func commitAndPush(ctx context.Context, cfg Config, message string, push bool) (bool, error) {
 	changed, _, err := commitChanges(ctx, cfg, message)
-	if err != nil || !changed || !push {
+	if err != nil || !changed || !push || !HasRemote(ctx, cfg.Repo) {
 		return changed, err
 	}
 	if err := git(ctx, cfg.Repo, "push", "-u", "origin", "HEAD"); err != nil {
@@ -189,6 +200,10 @@ func commitChanges(ctx context.Context, cfg Config, message string) (bool, strin
 }
 
 func pushCommit(ctx context.Context, cfg Config, sha string) error {
+	if !HasRemote(ctx, cfg.Repo) {
+		return nil
+	}
+
 	branch, err := gitOutput(ctx, cfg.Repo, "symbolic-ref", "--quiet", "--short", "HEAD")
 	if err != nil || strings.TrimSpace(branch) == "" {
 		branch = "main"
