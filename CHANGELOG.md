@@ -10,6 +10,7 @@
 
 - Chat: add full SDK message output for list/search, get with markup selection, text-only update/edit, and confirmed delete with explicit reply deletion; preserve compact defaults and wrap nested rich content for agents. (jai/gogcli#1) — thanks @jai.
 
+- Auth: automatic reauthorization no longer replays a stored Google Ads (`adwords`) grant unless the failing command needs Ads, so an old Ads grant cannot trigger Google's passkey gate; restore it with `gog auth add <email> --services user,ads`. (#1353)
 - Dependencies: refresh the MCP and Google API clients, networking libraries, and tracking-worker tooling while preserving the Go 1.26 minimum, 24-hour worker cooldown, and security overrides.
 
 ## 0.48.1 - 2026-11-15
