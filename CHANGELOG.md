@@ -2,6 +2,8 @@
 
 ## 0.48.2 - Unreleased
 
+- Auth: block Ads grant replay for legacy service-only metadata and imported scope lists during automatic reauthorization, while preserving explicit Ads requests. (jai/gogcli#1)
+
 - Calendar: reject non-empty attendee input that yields no addresses instead of clearing every attendee. (jai/gogcli#1)
 
 - Calendar: carry explicit summary clears into Zoom meeting creation and regeneration. (jai/gogcli#1)

@@ -34,7 +34,8 @@ type ReauthOptions struct {
 	// StoredToken, if non-nil, provides the full scope/service set from the
 	// original authorization. When present, its Scopes and Services are used
 	// for the re-authorization instead of the triggering request's narrower
-	// scopes, preventing silent grant narrowing.
+	// scopes, preventing silent grant narrowing. Ads grants are omitted when
+	// the triggering request does not need Ads.
 	StoredToken *secrets.Token
 	// EnsureKeychainAccess ensures the keychain is accessible for writes.
 	// May be nil if keychain access is not needed (e.g. file backend).
@@ -141,7 +142,9 @@ func Reauth(ctx context.Context, opts ReauthOptions) (secrets.Token, error) {
 	droppedAds := false
 	if opts.StoredToken != nil && !requestsAds(opts.Scopes, opts.Services) {
 		reauthScopes, droppedAds = withoutAdsScopes(reauthScopes)
+		serviceCount := len(reauthServices)
 		reauthServices = slices.DeleteFunc(slices.Clone(reauthServices), isAdsService)
+		droppedAds = droppedAds || len(reauthServices) != serviceCount
 
 		if len(reauthScopes) == 0 {
 			reauthScopes = opts.Scopes
@@ -293,9 +296,12 @@ func requestsAds(scopes []string, services []string) bool {
 		return true
 	}
 
-	for _, scope := range serviceInfoByService[ServiceAds].scopes {
-		if slices.Contains(scopes, scope) {
-			return true
+	adsScopes := serviceInfoByService[ServiceAds].scopes
+	for _, entry := range scopes {
+		for _, scope := range strings.Fields(entry) {
+			if slices.Contains(adsScopes, scope) {
+				return true
+			}
 		}
 	}
 
@@ -304,11 +310,27 @@ func requestsAds(scopes []string, services []string) bool {
 
 func withoutAdsScopes(scopes []string) ([]string, bool) {
 	adsScopes := serviceInfoByService[ServiceAds].scopes
-	kept := slices.DeleteFunc(slices.Clone(scopes), func(scope string) bool {
-		return slices.Contains(adsScopes, scope)
-	})
+	var kept []string
+	dropped := false
 
-	return kept, len(kept) != len(scopes)
+	for _, entry := range scopes {
+		fields := strings.Fields(entry)
+
+		remaining := slices.DeleteFunc(fields, func(scope string) bool {
+			return slices.Contains(adsScopes, scope)
+		})
+		if len(remaining) == len(fields) {
+			kept = append(kept, entry)
+			continue
+		}
+		dropped = true
+
+		if len(remaining) > 0 {
+			kept = append(kept, strings.Join(remaining, " "))
+		}
+	}
+
+	return kept, dropped
 }
 
 // servicesFromScopes attempts to derive the service list from a set of

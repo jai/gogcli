@@ -301,6 +301,7 @@ func TestReauthReplaysStoredAdsScopeOnlyForAdsRequests(t *testing.T) {
 
 	for _, tc := range []struct {
 		name         string
+		storedToken  secrets.Token
 		services     []string
 		scopes       []string
 		wantScopes   []string
@@ -310,6 +311,7 @@ func TestReauthReplaysStoredAdsScopeOnlyForAdsRequests(t *testing.T) {
 	}{
 		{
 			name:         "gmail request drops stored ads",
+			storedToken:  secrets.Token{Scopes: []string{gmailScope, adsScope}, Services: []string{"gmail", "ads"}},
 			services:     []string{"gmail"},
 			scopes:       []string{gmailScope},
 			wantScopes:   []string{gmailScope},
@@ -319,10 +321,41 @@ func TestReauthReplaysStoredAdsScopeOnlyForAdsRequests(t *testing.T) {
 		},
 		{
 			name:         "ads request keeps stored ads",
+			storedToken:  secrets.Token{Scopes: []string{gmailScope, adsScope}, Services: []string{"gmail", "ads"}},
 			services:     []string{"ads"},
 			scopes:       []string{adsScope},
 			wantScopes:   []string{gmailScope, adsScope},
 			wantServices: []string{"gmail", "ads"},
+		},
+		{
+			name:        "legacy service metadata drops ads",
+			storedToken: secrets.Token{Services: []string{"gmail", "ads"}},
+			services:    []string{"gmail"}, scopes: []string{gmailScope},
+			wantScopes: []string{gmailScope}, wantServices: []string{"gmail"}, wantNarrowed: true, wantNotice: true,
+		},
+		{
+			name:        "service metadata without ads scope blocks replay",
+			storedToken: secrets.Token{Scopes: []string{gmailScope}, Services: []string{"gmail", "ads"}},
+			services:    []string{"gmail"}, scopes: []string{gmailScope},
+			wantScopes: []string{gmailScope}, wantServices: []string{"gmail"}, wantNarrowed: true, wantNotice: true,
+		},
+		{
+			name:        "imported combined scopes remove ads",
+			storedToken: secrets.Token{Scopes: []string{gmailScope + " " + adsScope}, Services: []string{"gmail", "ads"}},
+			services:    []string{"gmail"}, scopes: []string{gmailScope},
+			wantScopes: []string{gmailScope}, wantServices: []string{"gmail"}, wantNarrowed: true, wantNotice: true,
+		},
+		{
+			name:        "imported padded ads scope falls back to request",
+			storedToken: secrets.Token{Scopes: []string{" " + adsScope + " "}, Services: []string{"ads"}},
+			services:    []string{"gmail"}, scopes: []string{gmailScope},
+			wantScopes: []string{gmailScope}, wantServices: nil, wantNarrowed: true, wantNotice: true,
+		},
+		{
+			name:        "combined triggering scopes retain explicit ads request",
+			storedToken: secrets.Token{Scopes: []string{gmailScope, adsScope}, Services: []string{"gmail", "ads"}},
+			scopes:      []string{gmailScope + " " + adsScope},
+			wantScopes:  []string{gmailScope, adsScope}, wantServices: []string{"gmail", "ads"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -331,14 +364,11 @@ func TestReauthReplaysStoredAdsScopeOnlyForAdsRequests(t *testing.T) {
 
 			stderr := &bytesBuffer{}
 			opts := ReauthOptions{
-				Email:    "user@example.com",
-				Client:   "default",
-				Services: tc.services,
-				Scopes:   tc.scopes,
-				StoredToken: &secrets.Token{
-					Scopes:   []string{gmailScope, adsScope},
-					Services: []string{"gmail", "ads"},
-				},
+				Email:                "user@example.com",
+				Client:               "default",
+				Services:             tc.services,
+				Scopes:               tc.scopes,
+				StoredToken:          &tc.storedToken,
 				EnsureKeychainAccess: func(context.Context) error { return nil },
 				Confirm:              func(context.Context, string) (bool, error) { return true, nil },
 				AuthorizeFunc: func(ctx context.Context, authOpts AuthorizeOptions) (string, error) {
