@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -33,7 +34,8 @@ type ReauthOptions struct {
 	// StoredToken, if non-nil, provides the full scope/service set from the
 	// original authorization. When present, its Scopes and Services are used
 	// for the re-authorization instead of the triggering request's narrower
-	// scopes, preventing silent grant narrowing.
+	// scopes, preventing silent grant narrowing. Ads grants are omitted when
+	// the triggering request does not need Ads.
 	StoredToken *secrets.Token
 	// EnsureKeychainAccess ensures the keychain is accessible for writes.
 	// May be nil if keychain access is not needed (e.g. file backend).
@@ -135,6 +137,20 @@ func Reauth(ctx context.Context, opts ReauthOptions) (secrets.Token, error) {
 		}
 	}
 
+	// Google can require passkey enrollment before granting the Ads scope, which
+	// blocks the whole consent screen. Replay it only when this request needs Ads.
+	droppedAds := false
+	if opts.StoredToken != nil && !requestsAds(opts.Scopes, opts.Services) {
+		reauthScopes, droppedAds = withoutAdsScopes(reauthScopes)
+		serviceCount := len(reauthServices)
+		reauthServices = slices.DeleteFunc(slices.Clone(reauthServices), isAdsService)
+		droppedAds = droppedAds || len(reauthServices) != serviceCount
+
+		if len(reauthScopes) == 0 {
+			reauthScopes = opts.Scopes
+		}
+	}
+
 	// Convert service strings to Service types.
 	services := make([]Service, 0, len(reauthServices))
 	for _, s := range reauthServices {
@@ -156,10 +172,14 @@ func Reauth(ctx context.Context, opts ReauthOptions) (secrets.Token, error) {
 
 	fmt.Fprintln(stderr, "Re-authorizing…")
 
-	// A grant narrowed to read-only (limited Gmail, or Photos without append) must
+	if droppedAds {
+		fmt.Fprintf(stderr, "Skipping the Google Ads scope because Google may require a passkey for it; run `gog auth add %s --services user,ads --force-consent` if you need Ads access.\n", opts.Email)
+	}
+
+	// A narrowed Gmail, Calendar, or Photos grant, or a dropped Ads grant, must
 	// not ask Google to include previously granted scopes, or wider access returns.
-	narrowed := opts.StoredToken != nil &&
-		(hasLimitedGmailGrant(opts.StoredToken.Scopes) || hasLimitedPhotosGrant(opts.StoredToken.Scopes))
+	narrowed := droppedAds || (opts.StoredToken != nil &&
+		(hasLimitedGmailGrant(opts.StoredToken.Scopes) || hasLimitedCalendarGrant(opts.StoredToken.Scopes) || hasLimitedPhotosGrant(opts.StoredToken.Scopes)))
 
 	authorizeOpts := AuthorizeOptions{
 		Services:                    services,
@@ -231,6 +251,22 @@ func hasLimitedPhotosGrant(scopes []string) bool {
 	return readonly
 }
 
+func hasLimitedCalendarGrant(scopes []string) bool {
+	const calendarScope = "https://www.googleapis.com/auth/calendar"
+	limited := false
+
+	for _, scope := range scopes {
+		switch scope {
+		case calendarScope:
+			return false
+		case calendarScope + ".readonly":
+			limited = true
+		}
+	}
+
+	return limited
+}
+
 func hasLimitedGmailGrant(scopes []string) bool {
 	const gmailPrefix = "https://www.googleapis.com/auth/gmail."
 	limited := false
@@ -249,6 +285,52 @@ func hasLimitedGmailGrant(scopes []string) bool {
 	}
 
 	return limited
+}
+
+func isAdsService(service string) bool {
+	return strings.EqualFold(strings.TrimSpace(service), string(ServiceAds))
+}
+
+func requestsAds(scopes []string, services []string) bool {
+	if slices.ContainsFunc(services, isAdsService) {
+		return true
+	}
+
+	adsScopes := serviceInfoByService[ServiceAds].scopes
+	for _, entry := range scopes {
+		for _, scope := range strings.Fields(entry) {
+			if slices.Contains(adsScopes, scope) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func withoutAdsScopes(scopes []string) ([]string, bool) {
+	adsScopes := serviceInfoByService[ServiceAds].scopes
+	var kept []string
+	dropped := false
+
+	for _, entry := range scopes {
+		fields := strings.Fields(entry)
+
+		remaining := slices.DeleteFunc(fields, func(scope string) bool {
+			return slices.Contains(adsScopes, scope)
+		})
+		if len(remaining) == len(fields) {
+			kept = append(kept, entry)
+			continue
+		}
+		dropped = true
+
+		if len(remaining) > 0 {
+			kept = append(kept, strings.Join(remaining, " "))
+		}
+	}
+
+	return kept, dropped
 }
 
 // servicesFromScopes attempts to derive the service list from a set of

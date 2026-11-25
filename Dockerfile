@@ -1,9 +1,10 @@
 # syntax=docker/dockerfile:1.27.0
 
-ARG GO_VERSION=1.27.2
+ARG GO_VERSION=1.27.4
 ARG ALPINE_VERSION=3.24
 
-FROM golang:${GO_VERSION}-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS build
+FROM golang:${GO_VERSION}-alpine@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf AS build
+RUN apk add --no-cache --upgrade ca-certificates=20261020-r0 ca-certificates-bundle=20261020-r0
 
 RUN apk add --no-cache ca-certificates git tzdata
 
@@ -22,6 +23,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
     -o /out/gog ./cmd/gog
 
 FROM alpine:${ALPINE_VERSION}
+RUN apk add --no-cache --upgrade ca-certificates=20261020-r0 ca-certificates-bundle=20261020-r0
 
 LABEL org.opencontainers.image.source="https://github.com/openclaw/gogcli"
 LABEL org.opencontainers.image.description="Google services CLI for terminal automation"

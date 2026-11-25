@@ -13,6 +13,9 @@ import (
 )
 
 type ChatMessagesCmd struct {
+	Get       ChatMessagesGetCmd       `cmd:"" name:"get" help:"Get a full message"`
+	Update    ChatMessagesUpdateCmd    `cmd:"" name:"update" aliases:"edit" help:"Replace message text"`
+	Delete    ChatMessagesDeleteCmd    `cmd:"" name:"delete" aliases:"rm,remove,del" help:"Delete a message"`
 	List      ChatMessagesListCmd      `cmd:"" name:"list" aliases:"ls" help:"List messages"`
 	Search    ChatMessagesSearchCmd    `cmd:"" name:"search" aliases:"find,query" help:"Search messages across Chat"`
 	Send      ChatMessagesSendCmd      `cmd:"" name:"send" aliases:"create,post" help:"Send a message"`
@@ -21,6 +24,7 @@ type ChatMessagesCmd struct {
 }
 
 type ChatMessagesSearchCmd struct {
+	Full      bool     `name:"full" help:"Return full SDK messages and search metadata (requires --json)"`
 	Query     []string `arg:"" name:"query" help:"Search query using Google Chat filter syntax"`
 	Max       int64    `name:"max" aliases:"limit" help:"Max results per page" default:"25"`
 	Page      string   `name:"page" aliases:"cursor" help:"Page token"`
@@ -32,6 +36,9 @@ type ChatMessagesSearchCmd struct {
 }
 
 func (c *ChatMessagesSearchCmd) Run(ctx context.Context, flags *RootFlags) error {
+	if c.Full && !outfmt.IsJSON(ctx) {
+		return usage("--full requires --json")
+	}
 	u := ui.FromContext(ctx)
 	query := strings.TrimSpace(strings.Join(c.Query, " "))
 	if query == "" {
@@ -57,13 +64,7 @@ func (c *ChatMessagesSearchCmd) Run(ctx context.Context, flags *RootFlags) error
 	if c.View == "full" {
 		view = "SEARCH_MESSAGES_VIEW_FULL"
 	}
-	markup := ""
-	switch c.Markup {
-	case "chat":
-		markup = "MARKUP_SYNTAX_CHAT"
-	case "markdown":
-		markup = "MARKUP_SYNTAX_MARKDOWN"
-	}
+	markup := chatMarkupSyntax(c.Markup)
 
 	fetch := func(pageToken string) ([]*googleapi.ChatSearchResult, string, error) {
 		req := &chat.SearchMessagesRequest{
@@ -84,6 +85,17 @@ func (c *ChatMessagesSearchCmd) Run(ctx context.Context, flags *RootFlags) error
 	results, nextPageToken, err := loadPagedItems(c.Page, c.All, fetch)
 	if err != nil {
 		return err
+	}
+	if c.Full {
+		items := make([]*googleapi.ChatSearchResult, 0, len(results))
+		for _, result := range results {
+			if result != nil && result.Message != nil {
+				items = append(items, result)
+			}
+		}
+		return writePagedJSONResult(outfmt.WithUntrustedChatContent(ctx), map[string]any{
+			"results": items, "nextPageToken": nextPageToken,
+		}, len(items), c.FailEmpty)
 	}
 	items := compactChatSearchRows(results, c.View == "full")
 
@@ -143,6 +155,8 @@ func compactChatSearchRows(results []*googleapi.ChatSearchResult, includeRead bo
 }
 
 type ChatMessagesListCmd struct {
+	Full      bool   `name:"full" help:"Return full SDK messages (requires --json)"`
+	Markup    string `name:"markup" help:"Formatted text syntax: chat or markdown" enum:"chat,markdown," default:""`
 	Space     string `arg:"" name:"space" help:"Space name (spaces/...)"`
 	Max       int64  `name:"max" aliases:"limit" help:"Max results" default:"50"`
 	Page      string `name:"page" aliases:"cursor" help:"Page token"`
@@ -154,6 +168,9 @@ type ChatMessagesListCmd struct {
 }
 
 func (c *ChatMessagesListCmd) Run(ctx context.Context, flags *RootFlags) error {
+	if c.Full && !outfmt.IsJSON(ctx) {
+		return usage("--full requires --json")
+	}
 	u := ui.FromContext(ctx)
 	space, err := normalizeSpace(c.Space)
 	if err != nil {
@@ -208,6 +225,9 @@ func (c *ChatMessagesListCmd) Run(ctx context.Context, flags *RootFlags) error {
 		if filter != "" {
 			call = call.Filter(filter)
 		}
+		if markup := chatMarkupSyntax(c.Markup); markup != "" {
+			call = call.MarkupSyntax(markup)
+		}
 		resp, callErr := call.Do()
 		if callErr != nil {
 			return nil, "", callErr
@@ -220,6 +240,18 @@ func (c *ChatMessagesListCmd) Run(ctx context.Context, flags *RootFlags) error {
 		return err
 	}
 
+	if c.Full {
+		messages = compactChatRows(messages)
+		if err := outfmt.WriteJSON(outfmt.WithUntrustedChatContent(ctx), stdoutWriter(ctx), map[string]any{
+			"messages": messages, "nextPageToken": nextPageToken,
+		}); err != nil {
+			return err
+		}
+		if len(messages) == 0 {
+			return failEmptyExit(c.FailEmpty)
+		}
+		return nil
+	}
 	if outfmt.IsJSON(ctx) {
 		type item struct {
 			Resource               string                       `json:"resource"`

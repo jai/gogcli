@@ -34,6 +34,7 @@ type GmailSendCmd struct {
 	Attach                  []string `name:"attach" help:"Attachment file path (repeatable)"`
 	From                    string   `name:"from" help:"Send from this email address (must be a verified send-as alias)"`
 	composeSignatureOptions `embed:""`
+	composeTextHTMLOptions  `embed:""`
 	Track                   bool `name:"track" help:"Enable open tracking (requires tracking setup)"`
 	TrackSplit              bool `name:"track-split" help:"Send tracked messages separately per recipient"`
 	Quote                   bool `name:"quote" help:"Include quoted original message in reply (requires --reply-to-message-id or --thread-id)"`
@@ -75,6 +76,8 @@ type sendMessageOptions struct {
 	Attachments []mailmime.Attachment
 	Track       bool
 	TrackingCfg *tracking.Config
+	// AllowMissingTo lets a message go out with only Cc or Bcc recipients.
+	AllowMissingTo bool
 }
 
 func (c *GmailSendCmd) Run(ctx context.Context, flags *RootFlags) error {
@@ -91,6 +94,7 @@ func (c *GmailSendCmd) Run(ctx context.Context, flags *RootFlags) error {
 	if err != nil {
 		return err
 	}
+	htmlBodyInput = c.withTextHTML(body, htmlBodyInput)
 
 	if replyToMessageID != "" && threadID != "" {
 		return usage("use only one of --reply-to-message-id or --thread-id")
@@ -171,7 +175,8 @@ func (c *GmailSendCmd) Run(ctx context.Context, flags *RootFlags) error {
 		return err
 	}
 
-	from, err := resolveComposeSender(ctx, svc, account, c.From)
+	sendAs, sendAsErr := listSendAs(ctx, svc)
+	from, err := resolveComposeFrom(ctx, svc, account, c.From, sendAs, sendAsErr)
 	if err != nil {
 		return err
 	}
@@ -179,7 +184,7 @@ func (c *GmailSendCmd) Run(ctx context.Context, flags *RootFlags) error {
 	if err != nil {
 		return err
 	}
-	body, htmlBodyInput = appendComposeSignature(body, htmlBodyInput, signature)
+	body, htmlBodyInput = appendComposeSignature(body, directedHTML(htmlBodyInput), signature)
 	replyInfo, body, htmlBody, err := prepareComposeReply(ctx, svc, replyToMessageID, threadID, c.Quote, body, htmlBodyInput)
 	if err != nil {
 		return err
@@ -192,7 +197,8 @@ func (c *GmailSendCmd) Run(ctx context.Context, flags *RootFlags) error {
 	var toRecipients, ccRecipients []string
 	if c.ReplyAll {
 		// Auto-populate recipients from original message
-		toRecipients, ccRecipients = buildReplyAllRecipients(replyInfo, from.sendingEmail)
+		// Leave out the account and every send-as alias, as gmail reply-all does.
+		toRecipients, ccRecipients = buildReplyAllRecipients(replyInfo, selfEmailsForReply(account, from.sendingEmail, sendAs)...)
 	}
 
 	// Explicit --to and --cc override (not merge with) auto-populated
@@ -207,8 +213,11 @@ func (c *GmailSendCmd) Run(ctx context.Context, flags *RootFlags) error {
 		ccRecipients = explicitCc
 	}
 
-	// Final validation: we must have at least one recipient
-	if len(toRecipients) == 0 {
+	// Final validation: we must have at least one recipient. A reply-all may
+	// leave only Cc recipients once the user's own addresses are dropped, which
+	// gmail reply-all also sends.
+	allowMissingTo := c.ReplyAll && strings.TrimSpace(c.To) == "" && len(ccRecipients)+len(explicitBcc) > 0
+	if len(toRecipients) == 0 && !allowMissingTo {
 		return usage("no recipients: specify --to or use --reply-all with a message that has recipients")
 	}
 
@@ -237,6 +246,8 @@ func (c *GmailSendCmd) Run(ctx context.Context, flags *RootFlags) error {
 		Attachments: atts,
 		Track:       c.Track,
 		TrackingCfg: trackingCfg,
+
+		AllowMissingTo: allowMissingTo,
 	}, batches)
 	if err != nil {
 		return err
@@ -293,6 +304,7 @@ func (c *GmailSendCmd) rawModeConflict() string {
 		{strings.TrimSpace(c.BodyFile) != "", "--body-file"},
 		{c.BodyHTML != "", "--body-html"},
 		{strings.TrimSpace(c.BodyHTMLFile) != "", "--body-html-file"},
+		{c.HTMLFromText, "--html-from-text"},
 		{strings.TrimSpace(c.ReplyToMessageID) != "", "--reply-to-message-id"},
 		{c.ReplyAll, "--reply-all"},
 		{strings.TrimSpace(c.ReplyTo) != "", "--reply-to"},
@@ -439,7 +451,7 @@ func sendGmailBatches(ctx context.Context, svc *gmail.Service, opts sendMessageO
 
 		messageOpts := opts
 		messageOpts.BodyHTML = htmlBody
-		msg, err := buildGmailMessage(ctx, messageOpts, batch, false)
+		msg, err := buildGmailMessage(ctx, messageOpts, batch, opts.AllowMissingTo)
 		if err != nil {
 			return nil, err
 		}

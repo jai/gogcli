@@ -27,6 +27,8 @@ type GmailAutoReplyCmd struct {
 	MarkRead  bool     `name:"mark-read" help:"Mark threads as read after auto-replying"`
 	SkipBulk  bool     `name:"skip-bulk" help:"Skip auto-generated/list mail" default:"true"`
 	AllowSelf bool     `name:"allow-self" help:"Allow replying to messages sent by your own account/alias"`
+
+	composeTextHTMLOptions `embed:""`
 }
 
 type gmailAutoReplyInput struct {
@@ -91,7 +93,7 @@ func (c *GmailAutoReplyCmd) Run(ctx context.Context, flags *RootFlags) error {
 		Max:       resultLimit,
 		Subject:   strings.TrimSpace(c.Subject),
 		Body:      body,
-		BodyHTML:  c.BodyHTML,
+		BodyHTML:  c.withTextHTML(body, c.BodyHTML),
 		From:      strings.TrimSpace(c.From),
 		ReplyTo:   strings.TrimSpace(c.ReplyTo),
 		Label:     label,
@@ -162,7 +164,14 @@ func runGmailAutoReply(ctx context.Context, svc *gmail.Service, account string, 
 		Label: input.Label,
 	}
 
-	from, err := resolveComposeSender(ctx, svc, account, input.From)
+	sendAs, sendAsErr := listSendAs(ctx, svc)
+	// Without --allow-self the alias list is what keeps replies away from the
+	// user's own addresses, so a failed lookup must stop the run. With
+	// --allow-self those replies are allowed, so keep the previous fallback.
+	if sendAsErr != nil && !input.AllowSelf {
+		return summary, fmt.Errorf("list send-as aliases to exclude your own addresses: %w", sendAsErr)
+	}
+	from, err := resolveComposeFrom(ctx, svc, account, input.From, sendAs, sendAsErr)
 	if err != nil {
 		return summary, err
 	}
@@ -181,10 +190,7 @@ func runGmailAutoReply(ctx context.Context, svc *gmail.Service, account string, 
 		return summary, nil
 	}
 
-	selfAddrs := []string{account}
-	if from.sendingEmail != "" && !strings.EqualFold(from.sendingEmail, account) {
-		selfAddrs = append(selfAddrs, from.sendingEmail)
-	}
+	selfAddrs := selfEmailsForReply(account, from.sendingEmail, sendAs)
 
 	for _, messageID := range messageIDs {
 		msg, err := fetchMessageForAutoReply(ctx, svc, messageID)
@@ -223,6 +229,13 @@ func runGmailAutoReply(ctx context.Context, svc *gmail.Service, account string, 
 		}
 
 		replyMeta := replyInfoFromMessage(msg, false)
+		if !input.AllowSelf && autoReplyFromIsSelf(replyMeta, selfAddrs) {
+			result.Action = autoReplyActionSkipped
+			result.Reason = "no_reply_recipient"
+			summary.Results = append(summary.Results, result)
+			summary.Skipped++
+			continue
+		}
 		recipients := autoReplyRecipients(replyMeta, selfAddrs)
 		if len(recipients) == 0 && input.AllowSelf {
 			recipients = autoReplyRecipients(replyMeta, nil)
@@ -241,7 +254,7 @@ func runGmailAutoReply(ctx context.Context, svc *gmail.Service, account string, 
 			ReplyTo:   input.ReplyTo,
 			Subject:   autoReplySubject(input.Subject, headerValue(msg.Payload, "Subject")),
 			Body:      input.Body,
-			BodyHTML:  input.BodyHTML,
+			BodyHTML:  directedHTML(input.BodyHTML),
 			ReplyInfo: replyMeta,
 			Headers: map[string]string{
 				"Auto-Submitted":           "auto-replied",
@@ -322,6 +335,27 @@ func shouldSkipAutoReplyMessage(msg *gmail.Message) (bool, string) {
 		return true, "list_unsubscribe"
 	}
 	return false, ""
+}
+
+// autoReplyFromIsSelf reports whether From is one of the caller's own
+// addresses. The comparison matches autoReplyRecipients: case-insensitive on
+// the bare address.
+func autoReplyFromIsSelf(info *replyInfo, self []string) bool {
+	if info == nil || len(self) == 0 {
+		return false
+	}
+	selfSet := make(map[string]struct{}, len(self))
+	for _, addr := range self {
+		if trimmed := strings.ToLower(strings.TrimSpace(addr)); trimmed != "" {
+			selfSet[trimmed] = struct{}{}
+		}
+	}
+	for _, addr := range parseEmailAddresses(info.FromAddr) {
+		if _, ok := selfSet[strings.ToLower(strings.TrimSpace(addr))]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func autoReplyRecipients(info *replyInfo, self []string) []string {

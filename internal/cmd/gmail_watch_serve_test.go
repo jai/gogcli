@@ -21,6 +21,8 @@ import (
 )
 
 func TestGmailWatchServeCmd_DryRunDoesNotTouchStateOrListen(t *testing.T) {
+	t.Setenv("TEST_WATCH_PUSH", "shared-secret")
+	t.Setenv("TEST_WATCH_HOOK", "hook-secret")
 	origListen := listenAndServe
 	origOIDC := newOIDCValidator
 	t.Cleanup(func() {
@@ -50,9 +52,9 @@ func TestGmailWatchServeCmd_DryRunDoesNotTouchStateOrListen(t *testing.T) {
 		"--verify-oidc",
 		"--oidc-email", "push@example.com",
 		"--oidc-audience", "https://example.com/hook?secret=value",
-		"--token", "shared-secret",
+		"--token-env", "TEST_WATCH_PUSH",
 		"--hook-url", "https://example.com/downstream?secret=value",
-		"--hook-token", "hook-secret",
+		"--hook-token-env", "TEST_WATCH_HOOK",
 		"--include-body",
 		"--max-bytes", "42",
 		"--history-types", "messageAdded,labelRemoved",
@@ -129,6 +131,7 @@ func TestGmailWatchServeCmd_DryRunDoesNotTouchStateOrListen(t *testing.T) {
 }
 
 func TestGmailWatchServeCmd_DryRunReadsStoredHookWithoutLocking(t *testing.T) {
+	t.Setenv("TEST_WATCH_HOOK", "override-secret")
 	setWatchTestConfigHome(t)
 	layout := gmailWatchTestLayout(t)
 	statePath := filepath.Join(layout.GmailWatchDir(), sanitizeAccountForPath("a@b.com")+".json")
@@ -140,7 +143,7 @@ func TestGmailWatchServeCmd_DryRunReadsStoredHookWithoutLocking(t *testing.T) {
 		HistoryID: "100",
 		Hook: &gmailWatchHook{
 			URL:         "https://example.com/hook",
-			Token:       "stored-secret",
+			Token:       "",
 			IncludeBody: false,
 			MaxBytes:    123,
 		},
@@ -162,7 +165,7 @@ func TestGmailWatchServeCmd_DryRunReadsStoredHookWithoutLocking(t *testing.T) {
 
 	var stdout bytes.Buffer
 	ctx = newCmdRuntimeJSONOutputContext(t, &stdout, io.Discard)
-	if runErr := runKong(t, &GmailWatchServeCmd{}, nil, ctx, &RootFlags{Account: "a@b.com", DryRun: true, NoInput: true}); ExitCode(runErr) != 0 {
+	if runErr := runKong(t, &GmailWatchServeCmd{}, []string{"--hook-token-env", "TEST_WATCH_HOOK"}, ctx, &RootFlags{Account: "a@b.com", DryRun: true, NoInput: true}); ExitCode(runErr) != 0 {
 		t.Fatalf("stored-hook dry-run: %v", runErr)
 	}
 	var got struct {
@@ -179,6 +182,9 @@ func TestGmailWatchServeCmd_DryRunReadsStoredHookWithoutLocking(t *testing.T) {
 	}
 	if got.Request.Hook.Source != "stored" || !got.Request.Hook.TokenSet || got.Request.Hook.MaxBytes != 123 {
 		t.Fatalf("unexpected stored hook plan: %#v", got.Request.Hook)
+	}
+	if bytes.Contains(stdout.Bytes(), []byte("override-secret")) {
+		t.Fatal("dry-run exposed the environment hook token")
 	}
 	if _, statErr := os.Stat(filepath.Join(filepath.Dir(statePath), ".lock")); !os.IsNotExist(statErr) {
 		t.Fatalf("dry-run created watch lock: %v", statErr)
@@ -535,6 +541,50 @@ func TestGmailWatchServeCmd_PreservesClientOverrideForRequestContexts(t *testing
 	}
 	if got == nil {
 		t.Fatalf("expected server")
+	}
+	if _, callErr := got.newService(context.Background(), "a@b.com"); callErr != nil {
+		t.Fatalf("newService: %v", callErr)
+	}
+}
+
+func TestGmailWatchServeCmd_PreservesAPIBaseURLForRequestContexts(t *testing.T) {
+	origListen := listenAndServe
+	t.Cleanup(func() { listenAndServe = origListen })
+
+	setWatchTestConfigHome(t)
+
+	store := newGmailWatchTestStore(t, "a@b.com")
+	updateErr := store.Update(func(s *gmailWatchState) error {
+		s.Account = "a@b.com"
+		return nil
+	})
+	if updateErr != nil {
+		t.Fatalf("seed: %v", updateErr)
+	}
+
+	var got *gmailWatchServer
+	listenAndServe = func(srv *http.Server) error {
+		if gs, ok := srv.Handler.(*gmailWatchServer); ok {
+			got = gs
+		}
+		return nil
+	}
+
+	ctx := withGmailTestServiceFactory(newCmdRuntimeOutputContext(t, io.Discard, io.Discard), func(ctx context.Context, _ string) (*gmail.Service, error) {
+		if !googleapi.APIBaseURLEnabled(ctx) {
+			t.Fatal("request context lost GOG_GOOGLE_API_BASE_URL")
+		}
+		return &gmail.Service{}, nil
+	})
+	ctx, err := googleapi.WithAPIBaseURL(ctx, "http://127.0.0.1:18080")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if execErr := runKong(t, &GmailWatchServeCmd{}, []string{"--port", "9999", "--path", "/hook"}, ctx, &RootFlags{Account: "a@b.com"}); execErr != nil {
+		t.Fatalf("execute: %v", execErr)
+	}
+	if got == nil {
+		t.Fatal("expected server")
 	}
 	if _, callErr := got.newService(context.Background(), "a@b.com"); callErr != nil {
 		t.Fatalf("newService: %v", callErr)

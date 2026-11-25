@@ -3,6 +3,8 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"net/textproto"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -34,6 +36,7 @@ type GmailMessagesSearchCmd struct {
 	All                     bool     `name:"all" aliases:"all-pages,allpages" help:"Fetch all pages"`
 	FailEmpty               bool     `name:"fail-empty" aliases:"non-empty,require-results" help:"Exit with code 3 if no results"`
 	Count                   bool     `name:"count" help:"Report the whole-query count as totalMatches (exact) or totalMatchesAtLeast (lower bound); free with --all unless --page is set; unavailable with --results-only"`
+	IDsOnly                 bool     `name:"ids-only" help:"Return only message and thread IDs from the list call, skipping the label lookup and per-message fetch (use --max 500 for the largest pages)"`
 	Timezone                string   `name:"timezone" short:"z" help:"Output timezone (IANA name, e.g. America/New_York, UTC). Default: GOG_TIMEZONE, config, then local"`
 	Local                   bool     `name:"local" help:"Use local timezone (default behavior, useful to override --timezone)"`
 	IncludeBody             bool     `name:"include-body" help:"Include decoded message body (JSON is full; text output truncates only unusually large bodies)"`
@@ -41,6 +44,7 @@ type GmailMessagesSearchCmd struct {
 	Full                    bool     `name:"full" help:"Show full message bodies without truncation (implies --include-body)"`
 	IncludeAttachments      bool     `name:"include-attachments" env:"GOG_GMAIL_INCLUDE_ATTACHMENTS" help:"Include each message's attachment metadata"`
 	IncludeRecipients       bool     `name:"include-recipients" help:"Include To, Cc, and Bcc in JSON output (no extra API calls)"`
+	Headers                 string   `name:"headers" help:"Include up to 50 headers in JSON output under headers (comma-separated, max 256 bytes per name; canonical keys, e.g. Message-ID becomes Message-Id; first value if repeated; no extra API calls)"`
 	SanitizeContent         bool     `name:"sanitize-content" aliases:"sanitize,safe" help:"Emit agent-oriented sanitized content, as in gmail get: strip HTML, remove HTTP(S) URLs, and sanitize header text"`
 }
 
@@ -50,6 +54,13 @@ func (c *GmailMessagesSearchCmd) Run(ctx context.Context, flags *RootFlags) erro
 	}
 	if c.SanitizeContent && c.IncludeBody && c.BodyFormat == gmailMessageBodyFormatHTML {
 		return usage("--sanitize-content cannot be used with --body-format html")
+	}
+	if c.IDsOnly && (c.IncludeBody || c.IncludeAttachments || c.IncludeRecipients || c.Headers != "" || c.SanitizeContent) {
+		return usage("--ids-only cannot be used with --include-body, --full, --include-attachments, --include-recipients, --headers, or --sanitize-content")
+	}
+	headerNames, headerErr := gmailSearchHeaderNames(c.Headers)
+	if headerErr != nil {
+		return headerErr
 	}
 	u := ui.FromContext(ctx)
 	if err := validateGmailMaxResults(c.Max); err != nil {
@@ -116,23 +127,18 @@ func (c *GmailMessagesSearchCmd) Run(ctx context.Context, flags *RootFlags) erro
 		return failEmptyExit(c.FailEmpty)
 	}
 
-	idToName, err := fetchLabelIDToName(svc)
-	if err != nil {
-		return err
-	}
-
-	loc, err := resolveOutputLocation(ctx, c.Timezone, c.Local, stderrWriter(ctx))
-	if err != nil {
-		return err
-	}
-
-	items, err := fetchMessageDetails(ctx, svc, messages, idToName, loc, c.IncludeBody, c.BodyFormat, c.IncludeAttachments, c.UseIndexedAttachmentIDs, c.IncludeRecipients, c.SanitizeContent)
-	if err != nil {
-		return err
+	var items []messageItem
+	if c.IDsOnly {
+		items = messageIDItems(messages)
+	} else {
+		items, err = c.fetchDetails(ctx, svc, messages, headerNames)
+		if err != nil {
+			return err
+		}
 	}
 
 	if outfmt.IsJSON(ctx) {
-		ctx = outfmt.WithUntrustedContentKeys(ctx, "from", "to", "cc", "bcc")
+		ctx = outfmt.WithUntrustedContentKeys(ctx, append([]string{"from", "to", "cc", "bcc"}, headerNames...)...)
 		payload := map[string]any{
 			"messages":      items,
 			"nextPageToken": nextPageToken,
@@ -148,11 +154,15 @@ func (c *GmailMessagesSearchCmd) Run(ctx context.Context, flags *RootFlags) erro
 		return failEmptyExit(c.FailEmpty)
 	}
 
+	columns := gmailMessageColumns(c.IncludeBody, c.IncludeAttachments, c.Full)
+	if c.IDsOnly {
+		columns = gmailMessageIDColumns()
+	}
 	if err := outfmt.WriteTable(
 		ctx,
 		stdoutWriter(ctx),
 		items,
-		gmailMessageColumns(c.IncludeBody, c.IncludeAttachments, c.Full),
+		columns,
 	); err != nil {
 		return err
 	}
@@ -162,6 +172,29 @@ func (c *GmailMessagesSearchCmd) Run(ctx context.Context, flags *RootFlags) erro
 	}
 	printNextPageHintWithAll(u, nextPageToken, "--all/--all-pages")
 	return nil
+}
+
+func (c *GmailMessagesSearchCmd) fetchDetails(ctx context.Context, svc *gmail.Service, messages []*gmail.Message, headerNames []string) ([]messageItem, error) {
+	idToName, err := fetchLabelIDToName(svc)
+	if err != nil {
+		return nil, err
+	}
+	loc, err := resolveOutputLocation(ctx, c.Timezone, c.Local, stderrWriter(ctx))
+	if err != nil {
+		return nil, err
+	}
+	return fetchMessageDetails(ctx, svc, messages, idToName, loc, c.IncludeBody, c.BodyFormat, c.IncludeAttachments, c.UseIndexedAttachmentIDs, c.IncludeRecipients, headerNames, c.SanitizeContent)
+}
+
+func messageIDItems(messages []*gmail.Message) []messageItem {
+	items := make([]messageItem, 0, len(messages))
+	for _, m := range messages {
+		if m == nil || m.Id == "" {
+			continue
+		}
+		items = append(items, messageItem{ID: m.Id, ThreadID: m.ThreadId})
+	}
+	return items
 }
 
 type GmailMessagesModifyCmd struct {
@@ -242,17 +275,22 @@ type messageItem struct {
 	To              string             `json:"to,omitempty"`
 	Cc              string             `json:"cc,omitempty"`
 	Bcc             string             `json:"bcc,omitempty"`
+	Headers         map[string]string  `json:"headers,omitempty"`
 	Subject         string             `json:"subject,omitempty"`
 	Labels          []string           `json:"labels,omitempty"`
 	Body            string             `json:"body,omitempty"`
 	Attachments     []attachmentOutput `json:"attachments,omitempty"`
 }
 
-func fetchMessageDetails(ctx context.Context, svc *gmail.Service, messages []*gmail.Message, idToName map[string]string, loc *time.Location, includeBody bool, bodyFormat string, includeAttachments bool, useIndexedAttachmentIDs bool, includeRecipients bool, sanitize bool) ([]messageItem, error) {
+func fetchMessageDetails(ctx context.Context, svc *gmail.Service, messages []*gmail.Message, idToName map[string]string, loc *time.Location, includeBody bool, bodyFormat string, includeAttachments bool, useIndexedAttachmentIDs bool, includeRecipients bool, headerNames []string, sanitize bool) ([]messageItem, error) {
 	preferHTML := bodyFormat == gmailMessageBodyFormatHTML
 	if len(messages) == 0 {
 		return nil, nil
 	}
+
+	// The first failure fails the whole listing, so stop the remaining fetches.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	const maxConcurrency = 10
 	sem := make(chan struct{}, maxConcurrency)
@@ -291,6 +329,11 @@ func fetchMessageDetails(ctx context.Context, svc *gmail.Service, messages []*gm
 				if includeRecipients {
 					headers = append(headers, "To", "Cc", "Bcc")
 				}
+				for _, name := range headerNames {
+					if !hasHeaderName(headers, name) {
+						headers = append(headers, name)
+					}
+				}
 				call = call.Format("metadata").
 					MetadataHeaders(headers...).
 					Fields(gmailMessageSummaryFields)
@@ -319,6 +362,12 @@ func fetchMessageDetails(ctx context.Context, svc *gmail.Service, messages []*gm
 				item.To = header("To")
 				item.Cc = header("Cc")
 				item.Bcc = header("Bcc")
+			}
+			if len(headerNames) > 0 {
+				item.Headers = make(map[string]string, len(headerNames))
+				for _, name := range headerNames {
+					item.Headers[name] = header(name)
+				}
 			}
 			item.Date = formatGmailDateInLocation(headerValue(msg.Payload, "Date"), loc)
 			item.InternalDateISO = formatGmailDateISO(msg.InternalDate, loc)
@@ -364,6 +413,7 @@ func fetchMessageDetails(ctx context.Context, svc *gmail.Service, messages []*gm
 		if r.err != nil {
 			if firstErr == nil {
 				firstErr = r.err
+				cancel()
 			}
 			ordered[r.index] = messageItem{}
 			continue
@@ -381,6 +431,32 @@ func fetchMessageDetails(ctx context.Context, svc *gmail.Service, messages []*gm
 		}
 	}
 	return items, nil
+}
+
+// gmailSearchHeaderNames canonicalizes and dedupes --headers names, so JSON keys
+// do not depend on how they were typed and never collide with messageItem's
+// lower-camel fields when they are marked as untrusted content.
+func gmailSearchHeaderNames(raw string) ([]string, error) {
+	entries := splitCSV(raw)
+	if len(entries) > 50 {
+		return nil, usage("--headers accepts at most 50 names")
+	}
+	var names []string
+	for _, name := range entries {
+		if len(name) > 256 {
+			return nil, usage("--headers names must be at most 256 bytes")
+		}
+		for _, ch := range name {
+			if ch < 33 || ch > 126 || ch == ':' {
+				return nil, usage("--headers requires printable ASCII field names without spaces or colons")
+			}
+		}
+		name = textproto.CanonicalMIMEHeaderKey(name)
+		if !slices.Contains(names, name) {
+			names = append(names, name)
+		}
+	}
+	return names, nil
 }
 
 func sanitizeMessageBody(body string, full bool) string {

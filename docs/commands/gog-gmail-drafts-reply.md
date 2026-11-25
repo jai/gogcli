@@ -39,6 +39,7 @@ gog gmail (mail,email) drafts (draft) reply <messageId> [flags]
 | `--gmail-no-send` | `bool` | false | Block Gmail send operations (agent safety) |
 | `-h`<br>`--help` | `kong.helpFlag` |  | Show context-sensitive help. |
 | `--home` | `string` |  | Override gogcli config/data/state/cache root (equivalent to GOG_HOME) |
+| `--html-from-text` | `bool` |  | When only a plain body is given, also send it as HTML so Gmail web reflows paragraphs instead of breaking lines about every 70 characters |
 | `-j`<br>`--json`<br>`--machine` | `bool` | false | Output JSON to stdout (best for scripting) |
 | `--missing-inline-images` | `string` | error | Missing quoted CID images: error or visible placeholders (drafts only) |
 | `--no-input`<br>`--non-interactive`<br>`--noninteractive` | `bool` |  | Never prompt; fail instead (useful for CI) |

@@ -3,9 +3,12 @@ package googleauth
 import (
 	"context"
 	"errors"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/oauth2"
 
 	"github.com/openclaw/gogcli/internal/secrets"
 )
@@ -290,6 +293,128 @@ func TestReauthPreservesStoredScopes(t *testing.T) {
 	}
 }
 
+func TestReauthReplaysStoredAdsScopeOnlyForAdsRequests(t *testing.T) {
+	const (
+		gmailScope = "https://www.googleapis.com/auth/gmail.modify"
+		adsScope   = "https://www.googleapis.com/auth/adwords"
+	)
+
+	for _, tc := range []struct {
+		name         string
+		storedToken  secrets.Token
+		services     []string
+		scopes       []string
+		wantScopes   []string
+		wantServices []string
+		wantNarrowed bool
+		wantNotice   bool
+	}{
+		{
+			name:         "gmail request drops stored ads",
+			storedToken:  secrets.Token{Scopes: []string{gmailScope, adsScope}, Services: []string{"gmail", "ads"}},
+			services:     []string{"gmail"},
+			scopes:       []string{gmailScope},
+			wantScopes:   []string{gmailScope},
+			wantServices: []string{"gmail"},
+			wantNarrowed: true,
+			wantNotice:   true,
+		},
+		{
+			name:         "ads request keeps stored ads",
+			storedToken:  secrets.Token{Scopes: []string{gmailScope, adsScope}, Services: []string{"gmail", "ads"}},
+			services:     []string{"ads"},
+			scopes:       []string{adsScope},
+			wantScopes:   []string{gmailScope, adsScope},
+			wantServices: []string{"gmail", "ads"},
+		},
+		{
+			name:        "legacy service metadata drops ads",
+			storedToken: secrets.Token{Services: []string{"gmail", "ads"}},
+			services:    []string{"gmail"}, scopes: []string{gmailScope},
+			wantScopes: []string{gmailScope}, wantServices: []string{"gmail"}, wantNarrowed: true, wantNotice: true,
+		},
+		{
+			name:        "service metadata without ads scope blocks replay",
+			storedToken: secrets.Token{Scopes: []string{gmailScope}, Services: []string{"gmail", "ads"}},
+			services:    []string{"gmail"}, scopes: []string{gmailScope},
+			wantScopes: []string{gmailScope}, wantServices: []string{"gmail"}, wantNarrowed: true, wantNotice: true,
+		},
+		{
+			name:        "imported combined scopes remove ads",
+			storedToken: secrets.Token{Scopes: []string{gmailScope + " " + adsScope}, Services: []string{"gmail", "ads"}},
+			services:    []string{"gmail"}, scopes: []string{gmailScope},
+			wantScopes: []string{gmailScope}, wantServices: []string{"gmail"}, wantNarrowed: true, wantNotice: true,
+		},
+		{
+			name:        "imported padded ads scope falls back to request",
+			storedToken: secrets.Token{Scopes: []string{" " + adsScope + " "}, Services: []string{"ads"}},
+			services:    []string{"gmail"}, scopes: []string{gmailScope},
+			wantScopes: []string{gmailScope}, wantServices: nil, wantNarrowed: true, wantNotice: true,
+		},
+		{
+			name:        "combined triggering scopes retain explicit ads request",
+			storedToken: secrets.Token{Scopes: []string{gmailScope, adsScope}, Services: []string{"gmail", "ads"}},
+			scopes:      []string{gmailScope + " " + adsScope},
+			wantScopes:  []string{gmailScope, adsScope}, wantServices: []string{"gmail", "ads"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var requestedScopes, requestedServices []string
+			var narrowed bool
+
+			stderr := &bytesBuffer{}
+			opts := ReauthOptions{
+				Email:                "user@example.com",
+				Client:               "default",
+				Services:             tc.services,
+				Scopes:               tc.scopes,
+				StoredToken:          &tc.storedToken,
+				EnsureKeychainAccess: func(context.Context) error { return nil },
+				Confirm:              func(context.Context, string) (bool, error) { return true, nil },
+				AuthorizeFunc: func(ctx context.Context, authOpts AuthorizeOptions) (string, error) {
+					requestedScopes = authOpts.Scopes
+					narrowed = authOpts.DisableIncludeGrantedScopes
+
+					for _, svc := range authOpts.Services {
+						requestedServices = append(requestedServices, string(svc))
+					}
+
+					return "new-refresh-token", nil
+				},
+				FetchIdentityFunc: func(context.Context, string, string, []string, time.Duration) (Identity, error) {
+					return Identity{Subject: "sub123", Email: "user@example.com"}, nil
+				},
+				Stderr: stderr,
+			}
+
+			tok, err := Reauth(context.Background(), opts)
+			if err != nil {
+				t.Fatalf("Reauth: %v", err)
+			}
+
+			if strings.Join(requestedScopes, " ") != strings.Join(tc.wantScopes, " ") {
+				t.Fatalf("requested scopes = %v, want %v", requestedScopes, tc.wantScopes)
+			}
+
+			if strings.Join(requestedServices, " ") != strings.Join(tc.wantServices, " ") {
+				t.Fatalf("requested services = %v, want %v", requestedServices, tc.wantServices)
+			}
+
+			if strings.Join(tok.Scopes, " ") != strings.Join(tc.wantScopes, " ") {
+				t.Fatalf("stored scopes = %v, want %v", tok.Scopes, tc.wantScopes)
+			}
+
+			if narrowed != tc.wantNarrowed {
+				t.Fatalf("DisableIncludeGrantedScopes = %v, want %v", narrowed, tc.wantNarrowed)
+			}
+
+			if gotNotice := strings.Contains(string(stderr.data), "--services user,ads"); gotNotice != tc.wantNotice {
+				t.Fatalf("ads notice shown = %v, want %v; stderr: %s", gotNotice, tc.wantNotice, stderr.data)
+			}
+		})
+	}
+}
+
 func TestReauthPreservesLimitedGmailGrants(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -318,6 +443,56 @@ func TestReauthPreservesLimitedGmailGrants(t *testing.T) {
 					}
 
 					return "new-refresh-token", nil
+				},
+				FetchIdentityFunc: func(context.Context, string, string, []string, time.Duration) (Identity, error) {
+					return Identity{Email: "user@example.com"}, nil
+				},
+				Stderr: &bytesBuffer{},
+			}
+			if _, err := Reauth(context.Background(), opts); err != nil {
+				t.Fatalf("reauth: %v", err)
+			}
+		})
+	}
+}
+
+func TestReauthPreservesLimitedCalendarGrants(t *testing.T) {
+	const calendar = "https://www.googleapis.com/auth/calendar"
+	for _, tc := range []struct {
+		name   string
+		scopes []string
+		exact  bool
+	}{
+		{name: "read only", scopes: []string{"openid", calendar + ".readonly"}, exact: true},
+		{name: "read only with event writes", scopes: []string{calendar + ".readonly", calendar + ".events"}, exact: true},
+		{name: "read only with full Gmail", scopes: []string{calendar + ".readonly", "https://www.googleapis.com/auth/gmail.modify"}, exact: true},
+		{name: "full calendar", scopes: []string{calendar}},
+		{name: "full calendar with readonly", scopes: []string{calendar + ".readonly", calendar}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := ReauthOptions{
+				Email:       "user@example.com",
+				Client:      "default",
+				Scopes:      []string{calendar},
+				StoredToken: &secrets.Token{Services: []string{"calendar"}, Scopes: tc.scopes},
+				Confirm:     func(context.Context, string) (bool, error) { return true, nil },
+				AuthorizeFunc: func(_ context.Context, authOpts AuthorizeOptions) (string, error) {
+					cfg := oauth2.Config{Endpoint: oauth2.Endpoint{AuthURL: "https://example.invalid/auth"}, Scopes: authOpts.Scopes}
+
+					authURL, err := url.Parse(cfg.AuthCodeURL("state", authURLParams(authOpts.ForceConsent, !authOpts.DisableIncludeGrantedScopes)...))
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					if got := authURL.Query().Get("include_granted_scopes"); (got == "") != tc.exact {
+						t.Fatalf("include_granted_scopes = %q, want exact grant %t", got, tc.exact)
+					}
+
+					if got := authURL.Query().Get("scope"); got != strings.Join(tc.scopes, " ") {
+						t.Fatalf("scopes = %q, want stored scopes %v", got, tc.scopes)
+					}
+
+					return "synthetic-refresh-token", nil
 				},
 				FetchIdentityFunc: func(context.Context, string, string, []string, time.Duration) (Identity, error) {
 					return Identity{Email: "user@example.com"}, nil
